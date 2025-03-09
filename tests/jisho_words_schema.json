@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["meta", "data"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "integer",
+          "description": "HTTP status code of the response"
+        }
+      }
+    },
+    "data": {
+      "type": "array",
+      "description": "An array of word entries that match the search query",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "A URL-friendly identifier for the entry"
+          },
+          "is_common": {
+            "type": "boolean",
+            "description": "Whether this word is commonly used in Japanese"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags categorizing the word (e.g., wanikani level)"
+          },
+          "jlpt": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^jlpt-n[1-5]$"
+            },
+            "description": "JLPT (Japanese Language Proficiency Test) level(s) for this word"
+          },
+          "japanese": {
+            "type": "array",
+            "description": "Different ways the word is written and read in Japanese",
+            "items": {
+              "type": "object",
+              "properties": {
+                "word": {
+                  "type": "string",
+                  "description": "The word written in Japanese (typically kanji or a mix of kanji and kana)"
+                },
+                "reading": {
+                  "type": "string",
+                  "description": "Hiragana/katakana reading of the word"
+                }
+              }
+            }
+          },
+          "senses": {
+            "type": "array",
+            "description": "Different meanings/senses of the word",
+            "items": {
+              "type": "object",
+              "properties": {
+                "english_definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "English translations of this sense of the word"
+                },
+                "parts_of_speech": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Grammatical categories for this word (noun, verb, etc.)"
+                },
+                "links": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "Link text"
+                      },
+                      "url": {
+                        "type": "string",
+                        "description": "URL for external resource"
+                      }
+                    }
+                  },
+                  "description": "External links related to this sense"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Additional tags for this specific meaning"
+                },
+                "restrictions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Usage restrictions for this sense"
+                },
+                "see_also": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Related terms to look up"
+                },
+                "antonyms": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Words with opposite meanings"
+                },
+                "source": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Sources of this definition"
+                },
+                "info": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Additional information about usage or meaning"
+                },
+                "sentences": {
+                  "type": "array",
+                  "description": "Example sentences if provided"
+                }
+              }
+            }
+          },
+          "attribution": {
+            "type": "object",
+            "properties": {
+              "jmdict": {
+                "type": "boolean",
+                "description": "Whether this entry comes from JMdict"
+              },
+              "jmnedict": {
+                "type": "boolean",
+                "description": "Whether this entry comes from JMnedict"
+              },
+              "dbpedia": {
+                "type": ["boolean", "string"],
+                "description": "Whether this entry has a Wikipedia page (false) or URL to DBpedia resource"
+              }
+            }
+          }
+        },
+        "required": ["slug", "japanese", "senses", "attribution"]
+      }
+    }
+  }
+}
