@@ -41,6 +41,9 @@ def unordered_words():
     ]
 
 
+# TODO: Uncomment this test after implementing mock data I think
+# Also it needs to be decoupled from the anki search functionality
+
 def test_sort_and_limit_words(unordered_words):
     """
     Test that words are properly sorted based on reviewed Kanji and JLPT level.
@@ -52,14 +55,13 @@ def test_sort_and_limit_words(unordered_words):
     Within each priority group, words are further sorted by JLPT level (N5 > N4 > N3 > N2 > N1 > none).
     """
     # Call the function
-    result = card_processor.sort_and_limit_words(unordered_words, limit=10)
+    result = card_processor.sort_and_limit_words(unordered_words, original_kanji="学", limit=10)
 
     # Check that the words are sorted correctly
     result_kanji = [word["word"] for word in result]
-    assert result_kanji == ["学校", "大学", "言語", "学問"]
-
+    assert result_kanji == ["言語", "学校", "大学", "学問"]
 
 def test_sort_and_limit_words_empty_list():
     """Test that sort_and_limit_words handles an empty list gracefully."""
-    result = card_processor.sort_and_limit_words([], limit=10)
+    result = card_processor.sort_and_limit_words([], original_kanji="学", limit=10)
     assert result == [], "Empty input should return empty output"
