@@ -63,7 +63,7 @@ def test_get_reviewed_kanji():
     kanji_set = anki_connect.get_reviewed_kanji()
 
     # Check that we got back a set
-    assert isinstance(kanji_set, set), "Result is not a set"
+    assert len(kanji_set) > 0, "No kanji returned from get_reviewed_kanji"
 
     # If we got any kanji, check that they look like kanji
     for k in kanji_set:
