@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Set
 
 from jisho_anki_tool import anki_connect
 
-def sort_and_limit_words(words: List[Dict[str, Any]], limit: int = 10) -> List[Dict[str, Any]]:
+def sort_and_limit_words(words: List[Dict[str, Any]], original_kanji:str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Sort words based on whether other Kanji in the word have been reviewed,
     and by JLPT level. Higher priority is given to words where all Kanji
@@ -24,6 +24,9 @@ def sort_and_limit_words(words: List[Dict[str, Any]], limit: int = 10) -> List[D
     # Create a list of (word, priority, jlpt_rank) tuples for sorting
     word_rankings = []
 
+    # Remove the original Kanji from the list of words
+    words = [word for word in words if word["word"] != original_kanji]
+
     for word in words:
         # Check if all other Kanji in the word have been reviewed
         other_kanji = word.get("other_kanji", [])
@@ -38,7 +41,7 @@ def sort_and_limit_words(words: List[Dict[str, Any]], limit: int = 10) -> List[D
         jlpt_level = word.get("jlpt")
         jlpt_rank = jlpt_level if jlpt_level is not None else 0
 
-        word_rankings.append((word, priority, jlpt_rank))
+        word_rankings.append((word | {"priority": priority}, priority, jlpt_rank, priority))
 
     # Sort by priority (descending) and JLPT rank (descending)
     # This ensures a stable sort where priority comes first, then JLPT level
