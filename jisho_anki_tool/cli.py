@@ -19,13 +19,22 @@ def jisho_anki():
     click.echo("Press 'n' to fetch the current card, select words by number, or 'q' to quit.")
 
     displayed_words = []  # Store the last displayed word list
+    pending_words = []    # Store selected words to add to Anki later
 
     while True:
         try:
-            user_input = click.prompt("\nEnter 'n' for next card, integers to select words, or 'q' to quit")
+            # Show the number of pending words in the prompt if any
+            pending_msg = f" ({len(pending_words)} words pending)" if pending_words else ""
+            user_input = click.prompt(f"\nEnter 'n' for next card, integers to select words, or 'q' to quit{pending_msg}")
 
             # Quit the program
             if user_input.lower() == 'q':
+                if pending_words:
+                    should_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki before quitting?", default=True)
+                    if should_add:
+                        click.echo(f"Adding {len(pending_words)} words to Anki...")
+                        anki_connect.add_words_to_deck(pending_words)
+                        click.echo("Words successfully added to Anki!")
                 click.echo("Goodbye!")
                 sys.exit(0)
 
@@ -53,14 +62,15 @@ def jisho_anki():
                     click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
                     for i, word in enumerate(sorted_words, 1):
                         jlpt = f"(N{word.get('jlpt', 'Common')})" if word.get('jlpt') else "(Common)"
-                        click.echo(f"{i}. {word.get('word')} - {word.get('reading')} {jlpt} - {word.get('meaning')}")
+                        priority = "(R)" if word.get('priority') else "(N)"
+                        click.echo(f"{i}. {word.get('word')} - {word.get('reading')} {jlpt} {priority}- {word.get('meaning')}")
 
                     displayed_words = sorted_words
 
                 except Exception as e:
                     click.echo(f"Error: {str(e)}")
 
-            # Select words to add
+            # Select words to add to pending list
             elif any(c.isdigit() for c in user_input):
                 if not displayed_words:
                     click.echo("No words have been displayed yet. Press 'n' to fetch words first.")
@@ -68,18 +78,20 @@ def jisho_anki():
 
                 try:
                     selected_indices = utils.parse_selection(user_input)
-                    selected_words = []
+                    newly_selected = []
 
                     for idx in selected_indices:
                         if 1 <= idx <= len(displayed_words):
-                            selected_words.append(displayed_words[idx - 1])
+                            word = displayed_words[idx - 1]
+                            pending_words.append(word)
+                            newly_selected.append(word)
                         else:
                             click.echo(f"Invalid selection: {idx} - out of range.")
 
-                    if selected_words:
-                        click.echo(f"Adding {len(selected_words)} words to Anki...")
-                        result = anki_connect.add_words_to_deck(selected_words)
-                        click.echo("Words successfully added to Anki!")
+                    if newly_selected:
+                        click.echo(f"Added {len(newly_selected)} words to pending list. Total: {len(pending_words)}")
+                        for word in newly_selected:
+                            click.echo(f"  - {word.get('word')} ({word.get('reading')})")
 
                 except ValueError:
                     click.echo("Invalid selection format. Please enter space-separated numbers (e.g., '1 3 5').")
@@ -89,6 +101,12 @@ def jisho_anki():
 
         except KeyboardInterrupt:
             click.echo("\nOperation cancelled.")
+            if pending_words:
+                should_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki before quitting?", default=True)
+                if should_add:
+                    click.echo(f"Adding {len(pending_words)} words to Anki...")
+                    anki_connect.add_words_to_deck(pending_words)
+                    click.echo("Words successfully added to Anki!")
             sys.exit(0)
 
         except Exception as e:
