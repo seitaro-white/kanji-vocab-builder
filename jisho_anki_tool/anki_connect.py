@@ -8,6 +8,7 @@ from jisho_anki_tool.utils import format_furigana
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
 
+
 def send_request(action: str, **params) -> Any:
     """
     Send a request to AnkiConnect API.
@@ -22,11 +23,7 @@ def send_request(action: str, **params) -> Any:
     Raises:
         Exception: If the response contains an error or connection fails
     """
-    payload = {
-        "action": action,
-        "version": 6,
-        "params": params
-    }
+    payload = {"action": action, "version": 6, "params": params}
 
     try:
         response = requests.post(ANKI_CONNECT_URL, json=payload)
@@ -38,7 +35,10 @@ def send_request(action: str, **params) -> Any:
 
         return data.get("result")
     except requests.RequestException as e:
-        raise Exception(f"Failed to connect to Anki: {str(e)}. Make sure Anki is running with AnkiConnect installed.")
+        raise Exception(
+            f"Failed to connect to Anki: {str(e)}. Make sure Anki is running with AnkiConnect installed."
+        )
+
 
 def get_current_card() -> str:
     """
@@ -62,7 +62,12 @@ def get_current_card() -> str:
 
             # Remove any HTML tags if present
             # Using a simple approach - a more robust approach would use BeautifulSoup
-            kanji = kanji.replace("<div>", "").replace("</div>", "").replace("<br>", "").strip()
+            kanji = (
+                kanji.replace("<div>", "")
+                .replace("</div>", "")
+                .replace("<br>", "")
+                .strip()
+            )
 
             return kanji
         else:
@@ -70,7 +75,8 @@ def get_current_card() -> str:
     except Exception as e:
         raise Exception(f"Failed to get current card: {str(e)}")
 
-def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int]]:
+
+def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -79,13 +85,10 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int
         selected_words: List of word dictionaries containing word, reading, and definitions
 
     Returns:
-        List of IDs of the created notes (None values for duplicates)
-
-    Raises:
-        Exception: If the operation fails for reasons other than duplicates
+        None
     """
     if not selected_words:
-        return []
+        return
 
     def prepare_note(word: Dict[str, Any]) -> Dict[str, Any]:
         """Create an Anki note from a word dictionary"""
@@ -93,9 +96,7 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int
         front = format_furigana(word.get("word", ""), word.get("reading", ""))
 
         # Format the back with top 3 definitions
-        definitions = word.get("definitions", [])
-        if len(definitions) > 3:
-            definitions = definitions[:3]
+        definitions = word.get("definitions", [])[:3]
         back = "<br>".join(definitions)
 
         # Add JLPT level if available
@@ -106,22 +107,17 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int
         return {
             "deckName": "VocabularyNew",
             "modelName": "Basic",
-            "fields": {
-                "Front": front,
-                "Back": back
-            },
+            "fields": {"Front": front, "Back": back},
             "tags": ["jisho-anki-tool"],
-            "options": {
-                "allowDuplicate": False
-            }
+            "options": {"allowDuplicate": False},
         }
 
-    def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[List[Optional[int]], int, int]:
+    def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
         """
-        Add non-duplicate notes to Anki and return results
+        Add non-duplicate notes to Anki
 
         Returns:
-            Tuple of (result_ids, added_count, duplicates_count)
+            Tuple of (added_count, duplicates_count)
         """
         # Check which notes can be added
         can_add_result = send_request("canAddNotes", notes=notes)
@@ -129,51 +125,39 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int
         # Filter out notes that would cause duplicate errors
         notes_to_add = [note for i, note in enumerate(notes) if can_add_result[i]]
 
+        # Calculate counts
+        duplicates_count = len(notes) - len(notes_to_add)
+
         # If no non-duplicate notes to add, return early
         if not notes_to_add:
-            return [], 0, len(notes)
+            return 0, duplicates_count
 
         # Add only the non-duplicate notes
-        added_note_ids = send_request("addNotes", notes=notes_to_add)
+        send_request("addNotes", notes=notes_to_add)
 
-        # Create result list matching the original input order
-        result_ids = []
-        add_index = 0
-
-        for can_add in can_add_result:
-            if can_add:
-                # This note was added, use the ID from added_note_ids
-                result_ids.append(added_note_ids[add_index])
-                add_index += 1
-            else:
-                # This note was a duplicate, use None
-                result_ids.append(None)
-
-        # Count duplicates and added notes
-        duplicates_count = sum(1 for id in result_ids if id is None)
-        added_count = len(result_ids) - duplicates_count
-
-        return result_ids, added_count, duplicates_count
+        # Return counts
+        return len(notes_to_add), duplicates_count
 
     try:
         # Prepare all notes
         notes = [prepare_note(word) for word in selected_words]
 
         # Add non-duplicate notes
-        result_ids, added_count, duplicates_count = add_non_duplicate_notes(notes)
+        added_count, duplicates_count = add_non_duplicate_notes(notes)
 
         # Print summary
-        if duplicates_count > 0:
+        if duplicates_count > 0 and added_count > 0:
             print(f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes.")
+        elif duplicates_count > 0:
+            print(f"No notes added. Skipped {duplicates_count} duplicate notes.")
         elif added_count > 0:
             print(f"Added {added_count} notes.")
         else:
             print("No notes were added.")
 
-        return result_ids
-
     except Exception as e:
         raise Exception(f"Failed to add words to Anki: {str(e)}")
+
 
 def get_reviewed_kanji() -> Set[str]:
     """
@@ -203,7 +187,12 @@ def get_reviewed_kanji() -> Set[str]:
             if "fields" in card and "Kanji" in card["fields"]:
                 kanji = card["fields"]["Kanji"]["value"]
                 # Remove HTML and get clean Kanji character
-                kanji = kanji.replace("<div>", "").replace("</div>", "").replace("<br>", "").strip()
+                kanji = (
+                    kanji.replace("<div>", "")
+                    .replace("</div>", "")
+                    .replace("<br>", "")
+                    .strip()
+                )
                 if kanji and len(kanji) == 1:  # Ensure it's a single character
                     reviewed_kanji.add(kanji)
 
