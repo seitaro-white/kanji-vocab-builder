@@ -18,7 +18,7 @@ def fetch_jisho_data(query: str) -> Dict[str, Any]:
     try:
         # Construct the URL with proper encoding
         encoded_query = urllib.parse.quote(query)
-        url = f"https://jisho.org/api/v1/search/words?keyword={encoded_query}"
+        url = f"https://jisho.org/api/v1/search/words?keyword=*{encoded_query}*"
 
         # Send the request
         response = requests.get(url)
