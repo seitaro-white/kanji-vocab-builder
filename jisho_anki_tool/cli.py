@@ -90,6 +90,9 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
     console.print(table)
 
+    # Add a separator line after the table for better visual distinction
+    console.print("─" * 80, style="dim")
+
     return sorted_words
 
 
