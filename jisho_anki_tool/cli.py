@@ -1,6 +1,8 @@
 import click
 import sys
 from typing import List, Dict, Any, Optional, Tuple
+from rich.console import Console
+from rich.table import Table
 
 from jisho_anki_tool import anki_connect
 from jisho_anki_tool import jisho_api
@@ -17,7 +19,7 @@ def display_welcome_message() -> None:
 
 def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     """
-    Fetch words containing the kanji from Jisho and display them.
+    Fetch words containing the kanji from Jisho and display them in a rich table.
 
     Args:
         kanji: The kanji character to search for
@@ -36,12 +38,35 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     click.echo("Sorting words by review status and JLPT level...")
     sorted_words = card_processor.sort_and_limit_words(words, kanji)
 
-    # Display words with index
-    click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    # Create a rich table for display
+    console = Console()
+    table = Table(box=None, show_header=False)
+
+    # Add columns (without headers)
+    table.add_column("Index", style="cyan")
+    table.add_column("Word", style="bold")
+    table.add_column("Reading")
+    table.add_column("JLPT", style="green")
+    table.add_column("Priority", style="magenta")
+    table.add_column("Meaning", style="yellow")
+
+    # Add rows for each word
     for i, word in enumerate(sorted_words, 1):
-        jlpt = f"(N{word.get('jlpt', 'Common')})" if word.get('jlpt') else "(Common)"
-        priority = "(R)" if word.get('priority') else "(N)"
-        click.echo(f"{i}. {word.get('word')} - {word.get('reading')} {jlpt} {priority}- {word.get('meaning')}")
+        jlpt = f"N{word.get('jlpt')}" if word.get('jlpt') else "Common"
+        priority = "R" if word.get('priority') else "N"
+
+        table.add_row(
+            str(i),                     # Index
+            word.get('word', ''),       # Word
+            word.get('reading', ''),    # Reading
+            jlpt,                       # JLPT level
+            priority,                   # Priority
+            word.get('meaning', '')     # Meaning
+        )
+
+    # Display the table
+    click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    console.print(table)
 
     return sorted_words
 
