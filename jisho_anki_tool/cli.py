@@ -1,6 +1,9 @@
 import click
 import sys
 from typing import List, Dict, Any, Optional, Tuple
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
 from jisho_anki_tool import anki_connect
 from jisho_anki_tool import jisho_api
@@ -17,7 +20,7 @@ def display_welcome_message() -> None:
 
 def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     """
-    Fetch words containing the kanji from Jisho and display them.
+    Fetch words containing the kanji from Jisho and display them in a rich table.
 
     Args:
         kanji: The kanji character to search for
@@ -36,12 +39,59 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     click.echo("Sorting words by review status and JLPT level...")
     sorted_words = card_processor.sort_and_limit_words(words, kanji)
 
-    # Display words with index
-    click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    # Create a rich table for display
+    console = Console()
+    table = Table(box=None, show_header=False)
+
+    # Add columns (without headers)
+    table.add_column("Index", style="yellow2")
+    table.add_column("Word", style="chartreuse3")
+    table.add_column("Reading", style="cornflower_blue")
+    table.add_column("JLPT")
+    table.add_column("Priority", style="magenta")
+    table.add_column("Meaning", style="grey74")
+
+    # JLPT level color mapping
+    jlpt_colors = {
+        5: "#209c05",
+        4: "#85e62c",
+        3: "#ebff0a",
+        2: "#f2ce02",
+        1: "#ff0a0a"
+    }
+
+    # Add rows for each word
     for i, word in enumerate(sorted_words, 1):
-        jlpt = f"(N{word.get('jlpt', 'Common')})" if word.get('jlpt') else "(Common)"
-        priority = "(R)" if word.get('priority') else "(N)"
-        click.echo(f"{i}. {word.get('word')} - {word.get('reading')} {jlpt} {priority}- {word.get('meaning')}")
+        jlpt_level = word.get('jlpt')
+
+        # Create styled JLPT text
+        if jlpt_level:
+            jlpt_text = Text(f"N{jlpt_level}")
+            jlpt_text.stylize(jlpt_colors.get(jlpt_level, "white"))
+        else:
+            jlpt_text = Text("Common", style="white")
+
+        # Create styled priority text - red for "N" (not reviewed), green for "R" (reviewed)
+        if word.get('priority'):
+            priority_text = Text("R", style="green")
+        else:
+            priority_text = Text("N", style="red")
+
+        table.add_row(
+            str(i) + ".",                # Index
+            word.get('word', ''),        # Word
+            word.get('reading', ''),     # Reading
+            jlpt_text,                   # JLPT level with specific color
+            priority_text,               # Priority with color (green for R, red for N)
+            word.get('meaning', '')      # Meaning
+        )
+
+    # Display the table
+    click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    console.print(table)
+
+    # Add a separator line after the table for better visual distinction
+    console.print("─" * 80, style="dim")
 
     return sorted_words
 
