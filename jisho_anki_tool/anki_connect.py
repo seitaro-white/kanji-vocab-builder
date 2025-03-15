@@ -1,6 +1,6 @@
 import requests
 import json
-from typing import List, Dict, Set, Any, Optional
+from typing import List, Dict, Set, Any, Optional, Tuple
 
 # Update import to avoid circular dependency
 from jisho_anki_tool.utils import format_furigana
@@ -70,22 +70,25 @@ def get_current_card() -> str:
     except Exception as e:
         raise Exception(f"Failed to get current card: {str(e)}")
 
-def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[int]:
+def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[Optional[int]]:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
+    Handles duplicate notes by skipping them and continuing with others.
 
     Args:
         selected_words: List of word dictionaries containing word, reading, and definitions
 
     Returns:
-        List of IDs of the created notes
+        List of IDs of the created notes (None values for duplicates)
 
     Raises:
-        Exception: If the operation fails
+        Exception: If the operation fails for reasons other than duplicates
     """
-    notes = []
+    if not selected_words:
+        return []
 
-    for word in selected_words:
+    def prepare_note(word: Dict[str, Any]) -> Dict[str, Any]:
+        """Create an Anki note from a word dictionary"""
         # Format the front with furigana
         front = format_furigana(word.get("word", ""), word.get("reading", ""))
 
@@ -100,29 +103,75 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> List[int]:
             back += f"<br><br><i>JLPT Level: N{word['jlpt']}</i>"
 
         # Create note
-        note = {
+        return {
             "deckName": "VocabularyNew",
             "modelName": "Basic",
             "fields": {
                 "Front": front,
                 "Back": back
             },
-            "tags": ["jisho-anki-tool"]
+            "tags": ["jisho-anki-tool"],
+            "options": {
+                "allowDuplicate": False
+            }
         }
 
-        notes.append(note)
+    def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[List[Optional[int]], int, int]:
+        """
+        Add non-duplicate notes to Anki and return results
 
-    if not notes:
-        return []
+        Returns:
+            Tuple of (result_ids, added_count, duplicates_count)
+        """
+        # Check which notes can be added
+        can_add_result = send_request("canAddNotes", notes=notes)
+
+        # Filter out notes that would cause duplicate errors
+        notes_to_add = [note for i, note in enumerate(notes) if can_add_result[i]]
+
+        # If no non-duplicate notes to add, return early
+        if not notes_to_add:
+            return [], 0, len(notes)
+
+        # Add only the non-duplicate notes
+        added_note_ids = send_request("addNotes", notes=notes_to_add)
+
+        # Create result list matching the original input order
+        result_ids = []
+        add_index = 0
+
+        for can_add in can_add_result:
+            if can_add:
+                # This note was added, use the ID from added_note_ids
+                result_ids.append(added_note_ids[add_index])
+                add_index += 1
+            else:
+                # This note was a duplicate, use None
+                result_ids.append(None)
+
+        # Count duplicates and added notes
+        duplicates_count = sum(1 for id in result_ids if id is None)
+        added_count = len(result_ids) - duplicates_count
+
+        return result_ids, added_count, duplicates_count
 
     try:
-        result = send_request("addNotes", notes=notes)
+        # Prepare all notes
+        notes = [prepare_note(word) for word in selected_words]
 
-        # Check if all notes were successfully added
-        if not result or any(note_id is None for note_id in result):
-            raise Exception("Failed to add one or more notes. They may be duplicates.")
+        # Add non-duplicate notes
+        result_ids, added_count, duplicates_count = add_non_duplicate_notes(notes)
 
-        return result
+        # Print summary
+        if duplicates_count > 0:
+            print(f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes.")
+        elif added_count > 0:
+            print(f"Added {added_count} notes.")
+        else:
+            print("No notes were added.")
+
+        return result_ids
+
     except Exception as e:
         raise Exception(f"Failed to add words to Anki: {str(e)}")
 
