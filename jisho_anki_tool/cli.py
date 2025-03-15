@@ -3,6 +3,7 @@ import sys
 from typing import List, Dict, Any, Optional, Tuple
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from jisho_anki_tool import anki_connect
 from jisho_anki_tool import jisho_api
@@ -43,25 +44,46 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     table = Table(box=None, show_header=False)
 
     # Add columns (without headers)
-    table.add_column("Index", style="cyan")
-    table.add_column("Word", style="bold")
-    table.add_column("Reading")
-    table.add_column("JLPT", style="green")
+    table.add_column("Index", style="yellow2")
+    table.add_column("Word", style="chartreuse3")
+    table.add_column("Reading", style="cornflower_blue")
+    table.add_column("JLPT")
     table.add_column("Priority", style="magenta")
-    table.add_column("Meaning", style="yellow")
+    table.add_column("Meaning", style="grey74")
+
+    # JLPT level color mapping
+    jlpt_colors = {
+        5: "#209c05",
+        4: "#85e62c",
+        3: "#ebff0a",
+        2: "#f2ce02",
+        1: "#ff0a0a"
+    }
 
     # Add rows for each word
     for i, word in enumerate(sorted_words, 1):
-        jlpt = f"N{word.get('jlpt')}" if word.get('jlpt') else "Common"
-        priority = "R" if word.get('priority') else "N"
+        jlpt_level = word.get('jlpt')
+
+        # Create styled JLPT text
+        if jlpt_level:
+            jlpt_text = Text(f"N{jlpt_level}")
+            jlpt_text.stylize(jlpt_colors.get(jlpt_level, "white"))
+        else:
+            jlpt_text = Text("Common", style="white")
+
+        # Create styled priority text - red for "N" (not reviewed), green for "R" (reviewed)
+        if word.get('priority'):
+            priority_text = Text("R", style="green")
+        else:
+            priority_text = Text("N", style="red")
 
         table.add_row(
-            str(i),                     # Index
-            word.get('word', ''),       # Word
-            word.get('reading', ''),    # Reading
-            jlpt,                       # JLPT level
-            priority,                   # Priority
-            word.get('meaning', '')     # Meaning
+            str(i) + ".",                # Index
+            word.get('word', ''),        # Word
+            word.get('reading', ''),     # Reading
+            jlpt_text,                   # JLPT level with specific color
+            priority_text,               # Priority with color (green for R, red for N)
+            word.get('meaning', '')      # Meaning
         )
 
     # Display the table
