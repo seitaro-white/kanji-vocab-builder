@@ -40,40 +40,132 @@ def send_request(action: str, **params) -> Any:
         )
 
 
-def get_current_card() -> str:
+def get_current_card() -> Optional[Dict[str, Any]]:
     """
-    Get the current Kanji card from Anki.
+    Get information about the current card being reviewed.
 
     Returns:
-        The Kanji from the Kanji field of the current card
-
-    Raises:
-        Exception: If no card is open or the response is invalid
+        Dictionary with card information or None if no card is being reviewed
     """
     try:
         result = send_request("guiCurrentCard")
+        if result is None or 'cardId' not in result:
+            return None
 
-        if not result:
-            raise Exception("No card is currently displayed in Anki.")
+        # Get card info to extract the front field (Kanji)
+        card_info = get_card_info(result['cardId'])
+        if not card_info:
+            return None
 
-        # Extract the Kanji from the Kanji field (updated from Front to Kanji)
-        if "fields" in result and "Kanji" in result["fields"]:
-            kanji = result["fields"]["Kanji"]["value"]
+        return card_info
+    except Exception:
+        return None
 
-            # Remove any HTML tags if present
-            # Using a simple approach - a more robust approach would use BeautifulSoup
-            kanji = (
-                kanji.replace("<div>", "")
-                .replace("</div>", "")
-                .replace("<br>", "")
-                .strip()
-            )
 
-            return kanji
-        else:
-            raise Exception("The current card doesn't have a 'Kanji' field.")
+def get_card_info(card_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Get detailed information about a specific card.
+
+    Args:
+        card_id: The ID of the card
+
+    Returns:
+        Dictionary with card information or None if the card couldn't be found
+    """
+    try:
+        result = send_request("cardsInfo", cards=[card_id])
+        if not result or not isinstance(result, list) or not result:
+            return None
+
+        return result[0]
+    except Exception:
+        return None
+
+
+def add_notes(notes: List[Dict[str, Any]]) -> List[Optional[int]]:
+    """
+    Add multiple notes to Anki.
+
+    Args:
+        notes: List of dictionaries with note information
+
+    Returns:
+        List of note IDs that were successfully added, or None for failures
+    """
+    try:
+        result = send_request("addNotes", notes=notes)
+        return result
     except Exception as e:
-        raise Exception(f"Failed to get current card: {str(e)}")
+        raise Exception(f"Failed to add notes: {str(e)}")
+
+
+def get_due_cards(deck_name: str = "All in one Kanji") -> List[Dict[str, Any]]:
+    """
+    Get all new cards that are due to be reviewed from the specified deck.
+
+    Args:
+        deck_name: The name of the deck to search in
+
+    Returns:
+        List of card information dictionaries
+    """
+    try:
+        # Find new cards in the specified deck that are due
+        card_ids = send_request("findCards", query=f"deck:\"{deck_name}\" is:new is:due")
+
+        if not card_ids:
+            return []
+
+        # Get detailed information about these cards
+        cards_info = send_request("cardsInfo", cards=card_ids)
+        return cards_info if cards_info else []
+
+    except Exception as e:
+        raise Exception(f"Failed to get due cards: {str(e)}")
+
+
+def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
+    """
+    Extract kanji characters from a list of cards.
+
+    Args:
+        cards: List of card information dictionaries
+
+    Returns:
+        List of kanji characters
+    """
+    kanji_list = []
+
+    for card in cards:
+        fields = card.get("fields", {})
+        # Assuming the front field contains the kanji
+        front_field = next((f for f in fields.keys() if "front" in f.lower()), None)
+
+        if front_field and fields[front_field].get("value"):
+            kanji = fields[front_field]["value"]
+            # Only take the first character if it's a kanji
+            if kanji and len(kanji) > 0 and is_kanji(kanji[0]):
+                kanji_list.append(kanji[0])
+
+    return kanji_list
+
+
+def is_kanji(char: str) -> bool:
+    """
+    Check if a character is a Kanji.
+
+    Args:
+        char: The character to check
+
+    Returns:
+        True if the character is a Kanji, False otherwise
+    """
+    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
+    if len(char) != 1:
+        return False
+
+    code_point = ord(char)
+    return 0x4E00 <= code_point <= 0x9FFF
 
 
 def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:

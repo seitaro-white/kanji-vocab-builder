@@ -1,6 +1,9 @@
 import click
+import os
 import sys
 from typing import List, Dict, Any, Optional, Tuple
+from tabulate import tabulate
+import time
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -9,6 +12,7 @@ from jisho_anki_tool import anki_connect
 from jisho_anki_tool import jisho_api
 from jisho_anki_tool import card_processor
 from jisho_anki_tool import utils
+from jisho_anki_tool.utils import format_furigana
 
 
 def display_welcome_message() -> None:
@@ -187,50 +191,185 @@ def get_user_input(pending_count: int) -> str:
     return click.prompt(f"\nEnter 'n' for next card, integers to select words, or 'q' to quit{pending_msg}")
 
 
-@click.command()
-def jisho_anki():
+def get_user_selection(max_num: int) -> List[int]:
     """
-    CLI tool to fetch Kanji cards from Anki, search for words on Jisho,
-    and add selected words back to Anki.
+    Get user selection of word indices.
+
+    Args:
+        max_num: Maximum number that can be selected
+
+    Returns:
+        List of selected indices (1-based)
     """
-    display_welcome_message()
-
-    displayed_words = []  # Store the last displayed word list
-    pending_words = []    # Store selected words to add to Anki later
-
     while True:
+        selection = click.prompt("Enter numbers to select words (e.g., '1 3 5') or '0' to skip",
+                                default="", show_default=False)
+
+        # Skip if user enters 0
+        if selection.strip() == "0":
+            return []
+
         try:
-            user_input = get_user_input(len(pending_words))
+            # Parse the input as a list of integers
+            selected_indices = [int(s) for s in selection.split() if s.strip()]
 
-            # Fetch new card and display words
-            if user_input.lower() == 'n':
-                kanji = handle_next_card()
-                if kanji:
-                    displayed_words = fetch_and_display_words(kanji)
+            # Validate the indices
+            if all(1 <= idx <= max_num for idx in selected_indices):
+                return selected_indices
+            else:
+                click.echo(f"Please enter valid numbers between 1 and {max_num}.")
+        except ValueError:
+            click.echo("Invalid input. Please enter space-separated numbers.")
 
-            # Select words to add to pending list
-            elif any(c.isdigit() for c in user_input):
-                pending_words = process_word_selection(displayed_words, pending_words, user_input)
 
-            # Quit the program
-            elif user_input.lower() == 'q':
+def process_kanji(kanji: str) -> List[Dict[str, Any]]:
+    """
+    Process a single kanji: search for words, display them, get user selection.
+
+    Args:
+        kanji: The kanji character to process
+
+    Returns:
+        List of selected words
+    """
+    click.echo(f"\nProcessing kanji: {kanji}")
+
+    # Search for words containing the kanji and display them
+    displayed_words = fetch_and_display_words(kanji)
+
+    if not displayed_words:
+        click.echo(f"No words found for kanji {kanji}")
+        return []
+
+    # Get user selection
+    selected_indices = get_user_selection(len(displayed_words))
+
+    if not selected_indices:
+        click.echo("No words selected. Skipping...")
+        return []
+
+    # Return the selected words
+    return [displayed_words[idx - 1] for idx in selected_indices]
+
+
+@click.group()
+def cli():
+    """Jisho Anki Tool - Add vocabulary words to Anki based on Kanji cards."""
+    pass
+
+@cli.command('add_during')
+def add_during():
+    """Add vocabulary words for the current Kanji card during review."""
+    try:
+        display_welcome_message()
+
+        # Main interactive loop
+        pending_words = []
+        displayed_words = []
+        current_kanji = None
+
+        while True:
+            command = get_user_input(len(pending_words))
+
+            if command.lower() == 'q':
                 add_pending_words_to_anki(pending_words)
-                click.echo("Goodbye!")
-                sys.exit(0)
+                break
 
+            elif command.lower() == 'n':
+                card = anki_connect.get_current_card()
 
+                if not card:
+                    click.echo("No card is currently being reviewed. Please open Anki and start reviewing.")
+                    continue
+
+                # TODO: Ths is fucked currently
+                fields = card.get("fields", {})
+                front_field = next((f for f in fields.keys() if "front" in f.lower()), None)
+
+                if not front_field or not fields[front_field].get("value"):
+                    click.echo("Could not find a front field with Kanji.")
+                    continue
+
+                # Get the kanji from the front field (assuming it's the first character)
+                kanji_value = fields[front_field]["value"]
+                if not kanji_value:
+                    click.echo("The current card doesn't have any Kanji.")
+                    continue
+
+                # Take the first character as the Kanji
+                current_kanji = kanji_value[0]
+
+                # Fetch and display words for this kanji
+                displayed_words = fetch_and_display_words(current_kanji)
 
             else:
-                click.echo("Invalid input. Enter 'n', numbers, or 'q'.")
+                # Process numeric selection
+                pending_words = process_word_selection(displayed_words, pending_words, command)
 
-        except KeyboardInterrupt:
-            click.echo("\nOperation cancelled.")
-            add_pending_words_to_anki(pending_words)
-            sys.exit(0)
-
-        except Exception as e:
-            click.echo(f"An unexpected error occurred: {str(e)}")
+    except Exception as e:
+        click.echo(f"Error: {str(e)}")
+    except KeyboardInterrupt:
+        click.echo("\nOperation interrupted. Exiting...")
+        add_pending_words_to_anki(pending_words)
 
 
-if __name__ == "__main__":
-    jisho_anki()
+@cli.command('add_prepare')
+@click.option('--source-deck', '-s', default="All in one Kanji",
+              help="Source deck containing Kanji cards")
+@click.option('--target-deck', '-d', default="VocabularyNew",
+              help="Target deck for new vocabulary cards")
+def add_prepare(source_deck: str, target_deck: str):
+    """Add vocabulary words for all new due Kanji cards."""
+    try:
+        # Get all due cards from the source deck
+        click.echo(f"Fetching due cards from deck: {source_deck}")
+        due_cards = anki_connect.get_due_cards(source_deck)
+
+        if not due_cards:
+            click.echo("No new cards due for review.")
+            return
+
+        # Extract kanji from the cards
+        kanji_list = anki_connect.extract_kanji_from_cards(due_cards)
+
+        if not kanji_list:
+            click.echo("No Kanji found in the due cards.")
+            return
+
+        click.echo(f"Found {len(kanji_list)} Kanji to process: {', '.join(kanji_list)}")
+
+        # Process each kanji and collect selected words
+        all_selected_words = []
+
+        for i, kanji in enumerate(kanji_list, 1):
+            click.echo(f"\n[{i}/{len(kanji_list)}]")
+            selected_words = process_kanji(kanji)
+            all_selected_words.extend(selected_words)
+
+            # If not the last kanji, ask if user wants to continue
+            if i < len(kanji_list):
+                click.echo("\nPress Enter to continue to the next kanji or Ctrl+C to exit...")
+                try:
+                    input()
+                except KeyboardInterrupt:
+                    click.echo("\nExiting early...")
+                    break
+
+        # Add all selected words to Anki
+        if all_selected_words:
+            click.echo(f"\nAdding {len(all_selected_words)} words to Anki...")
+            anki_connect.add_words_to_deck(all_selected_words)
+            click.echo("Words successfully added to Anki!")
+        else:
+            click.echo("\nNo words were selected.")
+
+        click.echo("\nProcessing complete!")
+
+    except Exception as e:
+        click.echo(f"Error: {str(e)}")
+    except KeyboardInterrupt:
+        click.echo("\nOperation interrupted. Exiting...")
+
+
+if __name__ == '__main__':
+    cli()
