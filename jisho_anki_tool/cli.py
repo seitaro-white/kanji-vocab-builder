@@ -5,10 +5,11 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from jisho_anki_tool import anki_connect
+from jisho_anki_tool.anki import connect
 from jisho_anki_tool import jisho_api
 from jisho_anki_tool import card_processor
 from jisho_anki_tool import utils
+from jisho_anki_tool.anki.schemas import KanjiCard
 
 
 def display_welcome_message() -> None:
@@ -31,7 +32,8 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     click.echo(f"Current Kanji: {kanji}")
     click.echo("Searching for words on Jisho...")
 
-    words = jisho_api.search_words(kanji)
+
+    words = jisho_api.search_words_containing_kanji(kanji)
     if not words:
         click.echo("No words found containing this Kanji.")
         return []
@@ -150,7 +152,7 @@ def add_pending_words_to_anki(pending_words: List[Dict[str, Any]]) -> None:
     should_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki before quitting?", default=True)
     if should_add:
         click.echo(f"Adding {len(pending_words)} words to Anki...")
-        anki_connect.add_words_to_deck(pending_words)
+        connect.add_words_to_deck(pending_words)
         click.echo("Words successfully added to Anki!")
 
 
@@ -163,7 +165,8 @@ def handle_next_card() -> Optional[str]:
     """
     click.echo("Fetching current Kanji from Anki...")
     try:
-        kanji = anki_connect.get_current_card()
+        card: KanjiCard = connect.get_current_card()
+        kanji = card.fields.Kanji.value
         if not kanji:
             click.echo("No Kanji card is currently displayed in Anki. Please open a card.")
             return None
