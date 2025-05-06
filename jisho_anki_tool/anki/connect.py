@@ -85,31 +85,6 @@ def get_current_card() -> Optional[Dict[str, Any]]:
     return card_info
 
 
-def get_due_cards(deck_name: str = "current") -> List[Dict[str, Any]]:
-    """
-    Get all new cards that are due to be reviewed from the specified deck.
-
-    Args:
-        deck_name: The name of the deck to search in
-
-    Returns:
-        List of card information dictionaries
-    """
-    try:
-        # Find new cards in the specified deck that are due
-        card_ids = send_request("findCards", query=f"deck:{deck_name} is:new")
-
-        # breakpoint()
-        if not card_ids:
-            return []
-
-        # Get detailed information about these cards
-        cards_info = send_request("cardsInfo", cards=card_ids)
-        return cards_info if cards_info else []
-
-    except Exception as e:
-        raise Exception(f"Failed to get due cards: {str(e)}")
-
 
 def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
     """
