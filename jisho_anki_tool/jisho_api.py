@@ -31,7 +31,7 @@ def fetch_jisho_data(query: str) -> Dict[str, Any]:
     except Exception as e:
         raise Exception(f"Error processing Jisho API response: {str(e)}")
 
-def search_words(kanji: str) -> List[Dict[str, Any]]:
+def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
     """
     Search for words containing the given Kanji character using the Jisho API.
 
