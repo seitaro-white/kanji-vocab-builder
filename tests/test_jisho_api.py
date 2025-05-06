@@ -43,7 +43,7 @@ def test_search_words():
     kanji = "山"
 
     # Call the function
-    words = jisho_api.search_words(kanji)
+    words = jisho_api.search_words_containing_kanji(kanji)
 
     # Check that we got a list
     assert isinstance(words, list)

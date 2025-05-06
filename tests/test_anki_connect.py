@@ -1,7 +1,7 @@
 import pytest
 import requests
 
-from jisho_anki_tool import anki_connect
+from jisho_anki_tool.anki import connect
 
 def test_ping_anki():
     """
@@ -39,7 +39,7 @@ def test_get_current_card():
     Will fail if Anki isn't running or no card is displayed.
     """
     # Get the current card
-    kanji = anki_connect.get_current_card()
+    kanji = connect.get_current_card()
 
     # Assert we got something back
     assert kanji, "No kanji returned from get_current_card"
@@ -60,7 +60,7 @@ def test_get_reviewed_kanji():
     Will fail if Anki isn't running.
     """
     # Get the reviewed kanji set
-    kanji_set = anki_connect.get_reviewed_kanji()
+    kanji_set = connect.get_reviewed_kanji()
 
     # Check that we got back a set
     assert len(kanji_set) > 0, "No kanji returned from get_reviewed_kanji"

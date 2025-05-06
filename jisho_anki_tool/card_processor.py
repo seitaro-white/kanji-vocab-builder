@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Set
 
-from jisho_anki_tool import anki_connect
+from jisho_anki_tool.anki import connect
 
 def sort_and_limit_words(words: List[Dict[str, Any]], original_kanji:str, limit: int = 10) -> List[Dict[str, Any]]:
     """
@@ -19,7 +19,7 @@ def sort_and_limit_words(words: List[Dict[str, Any]], original_kanji:str, limit:
         return []
 
     # Get the set of Kanji that have been reviewed
-    reviewed_kanji = anki_connect.get_reviewed_kanji()
+    reviewed_kanji = connect.get_reviewed_kanji()
 
     # Create a list of (word, priority, jlpt_rank) tuples for sorting
     word_rankings = []
