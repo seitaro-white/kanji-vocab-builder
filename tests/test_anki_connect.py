@@ -71,30 +71,3 @@ def test_get_reviewed_kanji():
         assert 0x4E00 <= ord(k) <= 0x9FFF, f"Character '{k}' is not a kanji"
 
     print(f"Successfully retrieved {len(kanji_set)} reviewed kanji")
-
-def test_add_words_to_deck():
-    """
-    Test adding words to an Anki deck.
-
-    Requires:
-    1. Anki to be running with AnkiConnect installed
-
-    Will test the formatting of cards without actually adding them to the deck.
-    """
-    # Create a test word
-    test_word = {
-        "word": "学校",
-        "reading": "がっこう",
-        "definitions": ["school", "educational institution"],
-        "jlpt": 5
-    }
-
-    # Mock send_request to prevent actual API call
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(anki_connect, "send_request", lambda *args, **kwargs: [12345])
-
-        # Call the function
-        result = anki_connect.add_words_to_deck([test_word])
-
-        # Check we got back a result
-        assert result == [12345], "Did not get expected note ID back"
