@@ -4,6 +4,7 @@ from typing import List, Dict, Set, Any, Optional, Tuple
 
 # Update import to avoid circular dependency
 from jisho_anki_tool.utils import format_furigana
+from jisho_anki_tool.anki.schemas import KanjiCard
 
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
@@ -41,7 +42,7 @@ def send_request(action: str, **params) -> Any:
         )
 
 
-def get_card_info(card_id: int) -> Optional[Dict[str, Any]]:
+def get_card_info(card_id: int) -> KanjiCard:
     """
     Get detailed information about a specific card.
 
@@ -51,14 +52,17 @@ def get_card_info(card_id: int) -> Optional[Dict[str, Any]]:
     Returns:
         Dictionary with card information or None if the card couldn't be found
     """
-    try:
-        result = send_request("cardsInfo", cards=[card_id])
-        if not result or not isinstance(result, list) or not result:
-            return None
 
-        return result[0]
-    except Exception:
-        return None
+
+    response: list = send_request("cardsInfo", cards=[card_id])
+    if len(response) > 1:
+        raise Exception(f"Multiple cards returned for ID {card_id}!")
+    if len(response) == 0:
+        raise Exception(f"Card not found for ID {card_id}!")
+
+    card_info = response[0]
+    return KanjiCard(**card_info)
+
 
 # High Level
 def get_current_card() -> Optional[Dict[str, Any]]:
