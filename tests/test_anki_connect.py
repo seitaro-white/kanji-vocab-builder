@@ -86,3 +86,39 @@ def test_get_reviewed_kanji():
         assert 0x4E00 <= ord(k) <= 0x9FFF, f"Character '{k}' is not a kanji"
 
     print(f"Successfully retrieved {len(kanji_set)} reviewed kanji")
+
+
+def test_get_due_cards():
+    """
+    Test getting due cards from Anki.
+
+    Requires:
+    1. Anki to be running with AnkiConnect installed.
+    2. The deck "All in one Kanji" to exist.
+    3. Optionally, some new cards that are due in the "All in one Kanji" deck
+       to fully test the card data retrieval.
+
+    Will fail if Anki isn't running.
+    The test will pass if no due cards are found, but will print a message.
+    """
+
+    # Get due cards from the default deck "All in one Kanji"
+    due_cards = connect.get_due_cards()
+
+    # Assert that the result is a list (it could be empty)
+    assert isinstance(due_cards, list), "get_due_cards should return a list."
+
+    if not due_cards:
+        print("No due cards found in 'All in one Kanji' deck. Test passes as the function executed correctly.")
+
+    else:
+        print(f"Successfully retrieved {len(due_cards)} due cards.")
+        # If cards are returned, check the structure of the first card
+        first_card = due_cards[0]
+        assert isinstance(first_card, dict), "Each item in the due_cards list should be a dictionary."
+        assert "cardId" in first_card, "Due card data should contain 'cardId'."
+        assert "fields" in first_card, "Due card data should contain 'fields'."
+        assert "deckName" in first_card, "Due card data should contain 'deckName'."
+        # New cards typically have queue and type 0
+        assert "queue" in first_card and first_card["queue"] == 0, "Due new card should have queue 0."
+        assert "type" in first_card and first_card["type"] == 0, "Due new card should have type 0."

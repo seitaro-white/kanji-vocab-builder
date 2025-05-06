@@ -85,7 +85,7 @@ def get_current_card() -> Optional[Dict[str, Any]]:
     return card_info
 
 
-def get_due_cards(deck_name: str = "All in one Kanji") -> List[Dict[str, Any]]:
+def get_due_cards(deck_name: str = "current") -> List[Dict[str, Any]]:
     """
     Get all new cards that are due to be reviewed from the specified deck.
 
@@ -97,8 +97,9 @@ def get_due_cards(deck_name: str = "All in one Kanji") -> List[Dict[str, Any]]:
     """
     try:
         # Find new cards in the specified deck that are due
-        card_ids = send_request("findCards", query=f"deck:\"{deck_name}\" is:new is:due")
+        card_ids = send_request("findCards", query=f"deck:{deck_name} is:new is:due")
 
+        # breakpoint()
         if not card_ids:
             return []
 
