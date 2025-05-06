@@ -97,7 +97,7 @@ def get_due_cards(deck_name: str = "current") -> List[Dict[str, Any]]:
     """
     try:
         # Find new cards in the specified deck that are due
-        card_ids = send_request("findCards", query=f"deck:{deck_name} is:new is:due")
+        card_ids = send_request("findCards", query=f"deck:{deck_name} is:new")
 
         # breakpoint()
         if not card_ids:

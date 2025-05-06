@@ -109,7 +109,7 @@ def test_get_due_cards():
     assert isinstance(due_cards, list), "get_due_cards should return a list."
 
     if not due_cards:
-        print("No due cards found in 'All in one Kanji' deck. Test passes as the function executed correctly.")
+        print("No due cards found. Test passes as the function executed correctly.")
 
     else:
         print(f"Successfully retrieved {len(due_cards)} due cards.")
