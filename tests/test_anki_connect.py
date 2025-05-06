@@ -2,6 +2,7 @@ import pytest
 import requests
 
 from jisho_anki_tool.anki import connect
+from jisho_anki_tool.anki.schemas import KanjiCard
 
 def test_ping_anki():
     """
@@ -39,15 +40,29 @@ def test_get_current_card():
     Will fail if Anki isn't running or no card is displayed.
     """
     # Get the current card
-    kanji = connect.get_current_card()
+    card = connect.get_current_card()
 
     # Assert we got something back
-    assert kanji, "No kanji returned from get_current_card"
+    assert card, "No card returned from get_current_card"
+
+def test_get_current_kanji():
+    """
+    Test getting the current kanji from Anki.
+
+    Requires:
+    1. Anki to be running with AnkiConnect installed
+    2. A card to be currently open in Anki with a "Kanji" field
+
+    Will fail if Anki isn't running or no card is displayed.
+    """
+    # Get the current kanji
+    kanjicard = connect.get_current_card()
 
     # Assert it's not empty
-    assert len(kanji) > 0, "Returned kanji is empty"
+    kanjichar = kanjicard.fields.Kanji.value
+    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
+    assert 0x4E00 <= ord(kanjichar) <= 0x9FFF
 
-    print(f"Successfully retrieved current card: {kanji}")
 
 def test_get_reviewed_kanji():
     """
