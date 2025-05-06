@@ -1,0 +1,16 @@
+[project]
+name = "kanji-vocab-builder"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click==8.1.7",
+    "jsonschema>=4.23.0",
+    "pytest==7.4.0",
+    "requests==2.31.0",
+    "rich>=14.0.0",
+]
+
+[project.scripts]
+jisho-anki = "jisho_anki_tool.cli:jisho_anki"
