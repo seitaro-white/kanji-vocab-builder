@@ -1,8 +1,8 @@
 """ Schemas for Anki Cards and Decks"""
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
-from typing import TypeVar, List, Generic, Dict, Optional # Added Generic, TypeVar
+from typing import TypeVar, List, Generic, Optional # Added Generic, TypeVar
 
 FieldType = TypeVar('FieldType', bound=BaseModel)
 
