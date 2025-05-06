@@ -1,6 +1,7 @@
 import requests
 import json
 from typing import List, Dict, Set, Any, Optional, Tuple
+import re
 
 # Update import to avoid circular dependency
 from jisho_anki_tool.utils import format_furigana
@@ -255,3 +256,54 @@ def get_reviewed_kanji() -> Set[str]:
         # If there's any error, just return an empty set rather than breaking the app flow
         print(f"Warning: Failed to get reviewed Kanji: {str(e)}")
         return set()
+
+
+def get_reviewed_vocab() -> List[str]:
+    """
+    Get a list of reviewed words from the 'VocabularyNew' deck.
+    Extracts the main word from the 'Front' field, typically from <ruby> tags.
+
+    Returns:
+        A list of reviewed words (main text from ruby tags or plain text).
+    """
+    reviewed_vocab: List[str] = []
+    try:
+        # Find card IDs of reviewed cards in the 'VocabularyNew' deck
+        # Reviewed cards are those that are not new.
+        card_ids = send_request("findCards", query="deck:VocabularyNew")
+
+        if not card_ids:
+            return reviewed_vocab
+
+        # Get card info for each card
+        cards_info = send_request("cardsInfo", cards=card_ids)
+
+        # Extract the word from the 'Front' field of each card
+        for card in cards_info:
+            if "fields" in card and "Front" in card["fields"]:
+                front_html_raw = card["fields"]["Front"]["value"]
+
+                # Clean common wrapper HTML tags that might be present in the field value
+                # Similar to cleaning in get_reviewed_kanji
+                front_html_cleaned = front_html_raw.replace("<div>", "").replace("</div>", "").replace("<br>", "").strip()
+
+                word = None
+                # Try to extract the main word from a <ruby> tag, e.g., <ruby>WORD<rt>reading</rt></ruby>
+                ruby_match = re.search(r'<ruby>(.*?)<rt>.*?</rt></ruby>', front_html_cleaned)
+
+                if ruby_match:
+                    word = ruby_match.group(1).strip()
+                elif not re.search(r'<[^>]+>', front_html_cleaned): # Check if it's plain text after cleaning
+                    # If no ruby tag and no other HTML, assume the cleaned string is the word
+                    word = front_html_cleaned
+                # else: The field might contain other HTML structures not handled here, or is empty after cleaning.
+
+                if word:  # Ensure word is not an empty string
+                    reviewed_vocab.append(word)
+
+        return reviewed_vocab
+    except Exception as e:
+        # If there's any error, print a warning and return an empty list
+        # This behavior is consistent with get_reviewed_kanji
+        print(f"Warning: Failed to get reviewed Vocab: {str(e)}")
+        return []

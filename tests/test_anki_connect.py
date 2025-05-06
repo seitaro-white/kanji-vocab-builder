@@ -86,3 +86,28 @@ def test_get_reviewed_kanji():
         assert 0x4E00 <= ord(k) <= 0x9FFF, f"Character '{k}' is not a kanji"
 
     print(f"Successfully retrieved {len(kanji_set)} reviewed kanji")
+
+def test_get_reviewed_vocab():
+    """
+    Test getting all reviewed vocabulary from Anki.
+
+    Requires:
+    1. Anki to be running with AnkiConnect installed
+    2. At least one vocabulary card to have been reviewed in the deck 'VocabularyNew'
+
+    Will fail if Anki isn't running or no vocab has been reviewed.
+    """
+    # Get the reviewed vocab list
+    vocab_list = connect.get_reviewed_vocab()
+
+    # Check that we got back a list and it's not empty
+    assert isinstance(vocab_list, list), "get_reviewed_vocab should return a list"
+    assert len(vocab_list) > 0, "No vocabulary returned from get_reviewed_vocab"
+
+    # If we got any vocab, check that they are non-empty strings
+    for word in vocab_list:
+        assert isinstance(word, str), f"Vocabulary item '{word}' is not a string"
+        assert len(word) > 0, "Encountered an empty string in reviewed vocabulary"
+
+    breakpoint()  # For debugging purposes
+    print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")
