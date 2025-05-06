@@ -50,7 +50,8 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     table.add_column("Word", style="chartreuse3")
     table.add_column("Reading", style="cornflower_blue")
     table.add_column("JLPT")
-    table.add_column("Priority", style="magenta")
+    table.add_column("Kanji Priority", style="magenta")
+    table.add_column("Already in Deck", style="light_slate_grey")
     table.add_column("Meaning", style="grey74")
 
     # JLPT level color mapping
@@ -71,7 +72,7 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
             jlpt_text = Text(f"N{jlpt_level}")
             jlpt_text.stylize(jlpt_colors.get(jlpt_level, "white"))
         else:
-            jlpt_text = Text("Common", style="white")
+            jlpt_text = Text("C", style="white")
 
         # Create styled priority text - red for "N" (not reviewed), green for "R" (reviewed)
         if word.get('priority'):
@@ -79,12 +80,21 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
         else:
             priority_text = Text("N", style="red")
 
+        # Check if the word itself is already in our reviewed vocabulary
+        reviewed_vocabulary = connect.get_reviewed_vocab()
+        if word.get('word') in reviewed_vocabulary:
+            reviewed_text = Text("Y", style="grey37")
+        else:
+            reviewed_text = Text("N", style="medium_violet_red")
+
+
         table.add_row(
             str(i) + ".",                # Index
             word.get('word', ''),        # Word
             word.get('reading', ''),     # Reading
             jlpt_text,                   # JLPT level with specific color
-            priority_text,               # Priority with color (green for R, red for N)
+            priority_text,
+            reviewed_text,               # Whether the other Kanji has been reviewed at some point
             word.get('meaning', '')      # Meaning
         )
 
