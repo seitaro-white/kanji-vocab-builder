@@ -59,7 +59,7 @@ def fetch_jisho_word_furigana(word: str) -> str:
 
     return (
         "<ruby>"
-        + "".join([f"{k}<rp> <rt>{f}</rt>" for k, f in zip(kanji, furigana)])
+        + "".join([f"{k}<rt>{f}</rt>" for k, f in zip(kanji, furigana)])
         + "</ruby>"
     )
 

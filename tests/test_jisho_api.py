@@ -13,7 +13,7 @@ def test_fetch_jisho_data():
 
     # Call the function
     try:
-        result = jisho_api.fetch_jisho_data(kanji)
+        result = jisho_api.fetch_jisho_word_search(kanji)
 
         # Check if the result is a dictionary (JSON)
         assert isinstance(result, dict)
@@ -61,6 +61,25 @@ def test_search_words():
 
     # The target kanji should appear in the word
     assert kanji in first_word["word"]
+
+
+def test_fetch_jisho_word_furigana():
+    """Test that fetch_jisho_word_furigana returns a valid furigana string."""
+    word = "学校"  # A common word with kanji
+    furigana_html = jisho_api.fetch_jisho_word_furigana(word)
+
+    # Check that the result is a string
+    assert isinstance(furigana_html, str)
+
+    # Check for basic ruby HTML structure
+    assert "<ruby>" in furigana_html
+    assert "</ruby>" in furigana_html
+    assert "<rt>" in furigana_html
+    assert "</rt>" in furigana_html
+    assert "学" in furigana_html # Check for original kanji
+    assert "校" in furigana_html # Check for original kanji
+    assert furigana_html == '<ruby>学<rt>がっ</rt>校<rt>こう</rt></ruby>'
+
 
 
 @pytest.mark.parametrize(
