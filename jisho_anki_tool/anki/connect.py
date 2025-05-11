@@ -43,7 +43,43 @@ def send_request(action: str, **params) -> Any:
         )
 
 
-def get_card_info(card_id: int) -> KanjiCard:
+def update_note(card_id: int, fields: dict) -> None:
+    """
+    Edit a note in Anki.
+
+    Args:
+        card_id: The ID of the card to edit (notes and cards share same ID thankfully)
+        fields: List of field names to edit
+        new_values: List of new values for the fields
+    """
+
+    response = send_request("updateNote", note={
+        "id": card_id,
+        "fields": fields
+    })
+    return response
+
+
+def _get_card_info(card_id: int) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific card.
+
+    Args:
+        card_id: The ID of the card
+
+    Returns:
+        Dictionary with card information or None if the card couldn't be found
+    """
+
+    response: list = send_request("cardsInfo", cards=[card_id])
+    if len(response) > 1:
+        raise Exception(f"Multiple cards returned for ID {card_id}!")
+    if len(response) == 0:
+        raise Exception(f"Card not found for ID {card_id}!")
+
+    return response[0]
+
+def get_kanji_card_info(card_id: int) -> KanjiCard:
     """
     Get detailed information about a specific card.
 
@@ -55,13 +91,7 @@ def get_card_info(card_id: int) -> KanjiCard:
     """
 
 
-    response: list = send_request("cardsInfo", cards=[card_id])
-    if len(response) > 1:
-        raise Exception(f"Multiple cards returned for ID {card_id}!")
-    if len(response) == 0:
-        raise Exception(f"Card not found for ID {card_id}!")
-
-    card_info = response[0]
+    card_info = _get_card_info(card_id)
     return KanjiCard(**card_info)
 
 
@@ -79,7 +109,7 @@ def get_current_card() -> Optional[Dict[str, Any]]:
         return None
 
     # Get card info to extract the front field (Kanji)
-    card_info = get_card_info(result['cardId'])
+    card_info = get_kanji_card_info(result['cardId'])
     if not card_info:
         return None
 
