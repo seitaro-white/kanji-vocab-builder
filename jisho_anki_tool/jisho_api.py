@@ -1,8 +1,11 @@
+# %%
 import requests
 import urllib.parse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
-def fetch_jisho_data(query: str) -> Dict[str, Any]:
+from bs4 import BeautifulSoup
+
+def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
     """
     Fetch raw data from the Jisho API for the given query.
 
@@ -31,6 +34,37 @@ def fetch_jisho_data(query: str) -> Dict[str, Any]:
     except Exception as e:
         raise Exception(f"Error processing Jisho API response: {str(e)}")
 
+
+def fetch_jisho_word_furigana(word: str) -> str:
+    """
+    While the API is good, it unfortunately does not include exact place information for kanji to hiragana.
+
+    We want to render the correct character above each kanji, which means we need to make a request to the
+    Jisho website itself and pull it out the html.
+
+    Return as a ruby string which renders in ANKI.
+    """
+
+    response = requests.get("https://jisho.org/word/" + word)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    wordhtml = soup.select("div.concept_light-representation")[0].extract()
+
+    # Convert to ruby
+    kanji = list(wordhtml.select_one("span.text").text.strip(" \n"))
+    furigana = [i.text for i in wordhtml.select("span.kanji")]
+
+    if not len(furigana) == len(kanji):
+        raise Exception("Furigana and kanji length mismatch")
+
+    return (
+        "<ruby>"
+        + "".join([f"{k}<rp> <rt>{f}</rt>" for k, f in zip(kanji, furigana)])
+        + "</ruby>"
+    )
+
+
+
 def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
     """
     Search for words containing the given Kanji character using the Jisho API.
@@ -53,7 +87,7 @@ def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
         return []
 
     # Fetch data from the API
-    data = fetch_jisho_data(kanji)
+    data = fetch_jisho_word_search(kanji)
 
     if "data" not in data:
         return []
@@ -111,12 +145,15 @@ def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
             "jlpt": jlpt_level,
             "definitions": definitions,
             "other_kanji": other_kanji,
-            "meaning": definitions[0] if definitions else ""  # Add first definition as meaning for display
+            "meaning": definitions[0]
+            if definitions
+            else "",  # Add first definition as meaning for display
         }
 
         result_words.append(result)
 
     return result_words
+
 
 def is_kanji(char: str) -> bool:
     """
