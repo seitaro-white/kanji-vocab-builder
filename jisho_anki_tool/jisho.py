@@ -15,6 +15,7 @@ class JishoWord(BaseModel):
     kana: str # The expression of the word in kana
     jlpt: int # JLPT level
     definitions: List[str] # A list of definitions
+    parts_of_speech: Optional[List[str]] = None # A list of parts of speech
 
 
 def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
@@ -54,7 +55,7 @@ def fetch_jisho_word_furigana(word: str) -> str:
     We want to render the correct character above each kanji, which means we need to make a request to the
     Jisho website itself and pull it out the html.
 
-    Return as a ruby string which renders in ANKI.
+    Return as a string in the format of "漢字[ふりがな] ひらがな"
     """
 
     response = requests.get("https://jisho.org/word/" + word)
@@ -62,18 +63,27 @@ def fetch_jisho_word_furigana(word: str) -> str:
 
     wordhtml = soup.select("div.concept_light-representation")[0].extract()
 
-    # Convert to ruby
-    kanji = list(wordhtml.select_one("span.text").text.strip(" \n"))
+    # Convert furigana to anki-friendly format
+    characters = wordhtml.select_one("span.text").text.strip(" \n")
     furigana = [i.text for i in wordhtml.select("span.kanji")]
 
-    if not len(furigana) == len(kanji):
-        raise Exception("Furigana and kanji length mismatch")
+    if len(furigana) != len([i for i in characters if is_kanji(i)]):
+        raise Exception(f"Furigana length does not match kanji length: {furigana} vs {characters}")
 
-    return (
-        "<ruby>"
-        + "".join([f"{k}<rt>{f}</rt>" for k, f in zip(kanji, furigana)])
-        + "</ruby>"
-    )
+    # Match up each kanji with its furigana, while just adding spaces for hiragana
+    anki_format, furigana_idx = "", 0
+    for c in characters:
+        if is_kanji(c):
+            anki_format += f"{c}[{furigana[furigana_idx]}]"
+            furigana_idx += 1
+        elif is_hiragana(c):
+            anki_format += f"{c} "
+        else:
+            raise Exception(f"Unknown character type: {c}")
+
+
+    return anki_format
+
 
 
 
@@ -133,15 +143,15 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
                     except (ValueError, IndexError):
                         pass
 
-        # Extract definitions (up to 3)
-        definitions = []
+        # Extract definitions and parts of speech (up to 3)
+        definitions, parts_of_speech = [], []
         if "senses" in item:
             for sense in item["senses"][:3]:  # Limit to top 3 senses
-                if "english_definitions" in sense:
-                    # Join multiple definitions with "; "
-                    definition = "; ".join(sense["english_definitions"])
-                    if definition:
-                        definitions.append(definition)
+                definition = "; ".join(sense.get("english_definitions", []))
+                pos = "; ".join(sense.get("parts_of_speech", []))
+
+                definitions.append(definition)
+                parts_of_speech.append(pos)
 
 
         # Results
@@ -150,6 +160,7 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
             kana=reading,
             jlpt=jlpt_level,
             definitions=definitions,
+            parts_of_speech=parts_of_speech,
         )
 
         result_words.append(jishoword)
@@ -160,16 +171,23 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
 def is_kanji(char: str) -> bool:
     """
     Check if a character is a Kanji.
-
-    Args:
-        char: The character to check
-
-    Returns:
-        True if the character is a Kanji, False otherwise
     """
-    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
+
     if len(char) != 1:
         return False
 
-    code_point = ord(char)
-    return 0x4E00 <= code_point <= 0x9FFF
+    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
+    return 0x4E00 <= ord(char) <= 0x9FFF
+
+
+def is_hiragana(char: str) -> bool:
+    """
+    Check if a character is Hiragana.
+    """
+    if len(char) != 1:
+        return False
+
+    # Unicode range for Hiragana: U+3040 to U+309F
+    return 0x3040 <= ord(char) <= 0x309F
+
+# %%

@@ -54,22 +54,21 @@ def test_search_words():
     assert kanji in words[0].expression
 
 
-def test_fetch_jisho_word_furigana():
+@pytest.mark.parametrize(
+    "word, expected",
+    [("学校", "学[がっ]校[こう]"),
+    ("お風呂", "お 風[ふ]呂[ろ]"),
+    ("走る", "走[はし]る ")],
+)
+def test_fetch_jisho_word_furigana(word, expected):
     """Test that fetch_jisho_word_furigana returns a valid furigana string."""
-    word = "学校"  # A common word with kanji
     furigana_html = jisho.fetch_jisho_word_furigana(word)
 
     # Check that the result is a string
     assert isinstance(furigana_html, str)
 
     # Check for basic ruby HTML structure
-    assert "<ruby>" in furigana_html
-    assert "</ruby>" in furigana_html
-    assert "<rt>" in furigana_html
-    assert "</rt>" in furigana_html
-    assert "学" in furigana_html # Check for original kanji
-    assert "校" in furigana_html # Check for original kanji
-    assert furigana_html == '<ruby>学<rt>がっ</rt>校<rt>こう</rt></ruby>'
+    assert furigana_html == expected
 
 
 
