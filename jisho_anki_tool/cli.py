@@ -162,7 +162,7 @@ def add_pending_words_to_anki(pending_words: List[Dict[str, Any]]) -> None:
     should_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki before quitting?", default=True)
     if should_add:
         click.echo(f"Adding {len(pending_words)} words to Anki...")
-        connect.add_words_to_deck(pending_words)
+        connect.add_vocab_note_to_deck(pending_words)
         click.echo("Words successfully added to Anki!")
 
 
