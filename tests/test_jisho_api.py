@@ -3,7 +3,9 @@ import requests
 import json
 import jsonschema
 import os
-from jisho_anki_tool import jisho_api
+from jisho_anki_tool import jisho
+
+from typing import List
 
 
 def test_fetch_jisho_data():
@@ -13,7 +15,7 @@ def test_fetch_jisho_data():
 
     # Call the function
     try:
-        result = jisho_api.fetch_jisho_data(kanji)
+        result = jisho.fetch_jisho_word_search(kanji)
 
         # Check if the result is a dictionary (JSON)
         assert isinstance(result, dict)
@@ -43,24 +45,31 @@ def test_search_words():
     kanji = "山"
 
     # Call the function
-    words = jisho_api.search_words_containing_kanji(kanji)
-
-    # Check that we got a list
-    assert isinstance(words, list)
+    words: List[jisho.JishoWord] = jisho.search_words_containing_kanji(kanji)
 
     # Check we get results
     assert len(words) > 0
 
-    # Check the structure of the first item
-    first_word = words[0]
-    assert "word" in first_word
-    assert "reading" in first_word
-    assert "definitions" in first_word
-    assert "other_kanji" in first_word
-    assert "meaning" in first_word
-
     # The target kanji should appear in the word
-    assert kanji in first_word["word"]
+    assert kanji in words[0].expression
+
+
+@pytest.mark.parametrize(
+    "word, expected",
+    [("学校", "学[がっ]校[こう]"),
+    ("お風呂", "お 風[ふ]呂[ろ]"),
+    ("走る", "走[はし]る ")],
+)
+def test_fetch_jisho_word_furigana(word, expected):
+    """Test that fetch_jisho_word_furigana returns a valid furigana string."""
+    furigana_html = jisho.fetch_jisho_word_furigana(word)
+
+    # Check that the result is a string
+    assert isinstance(furigana_html, str)
+
+    # Check for basic ruby HTML structure
+    assert furigana_html == expected
+
 
 
 @pytest.mark.parametrize(
@@ -84,4 +93,4 @@ def test_search_words():
 )
 def test_is_kanji(character, expected):
     """Test that is_kanji correctly identifies kanji characters."""
-    assert jisho_api.is_kanji(character) == expected
+    assert jisho.is_kanji(character) == expected

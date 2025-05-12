@@ -109,5 +109,4 @@ def test_get_reviewed_vocab():
         assert isinstance(word, str), f"Vocabulary item '{word}' is not a string"
         assert len(word) > 0, "Encountered an empty string in reviewed vocabulary"
 
-    breakpoint()  # For debugging purposes
     print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")

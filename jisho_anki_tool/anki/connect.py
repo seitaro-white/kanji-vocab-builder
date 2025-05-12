@@ -6,6 +6,7 @@ import re
 # Update import to avoid circular dependency
 from jisho_anki_tool.utils import format_furigana
 from jisho_anki_tool.anki.schemas import KanjiCard
+from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
 
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
@@ -43,7 +44,43 @@ def send_request(action: str, **params) -> Any:
         )
 
 
-def get_card_info(card_id: int) -> KanjiCard:
+def update_note(card_id: int, fields: dict) -> None:
+    """
+    Edit a note in Anki.
+
+    Args:
+        card_id: The ID of the card to edit (notes and cards share same ID thankfully)
+        fields: List of field names to edit
+        new_values: List of new values for the fields
+    """
+
+    response = send_request("updateNote", note={
+        "id": card_id,
+        "fields": fields
+    })
+    return response
+
+
+def _get_card_info(card_id: int) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific card.
+
+    Args:
+        card_id: The ID of the card
+
+    Returns:
+        Dictionary with card information or None if the card couldn't be found
+    """
+
+    response: list = send_request("cardsInfo", cards=[card_id])
+    if len(response) > 1:
+        raise Exception(f"Multiple cards returned for ID {card_id}!")
+    if len(response) == 0:
+        raise Exception(f"Card not found for ID {card_id}!")
+
+    return response[0]
+
+def get_kanji_card_info(card_id: int) -> KanjiCard:
     """
     Get detailed information about a specific card.
 
@@ -55,13 +92,7 @@ def get_card_info(card_id: int) -> KanjiCard:
     """
 
 
-    response: list = send_request("cardsInfo", cards=[card_id])
-    if len(response) > 1:
-        raise Exception(f"Multiple cards returned for ID {card_id}!")
-    if len(response) == 0:
-        raise Exception(f"Card not found for ID {card_id}!")
-
-    card_info = response[0]
+    card_info = _get_card_info(card_id)
     return KanjiCard(**card_info)
 
 
@@ -79,7 +110,7 @@ def get_current_card() -> Optional[Dict[str, Any]]:
         return None
 
     # Get card info to extract the front field (Kanji)
-    card_info = get_card_info(result['cardId'])
+    card_info = get_kanji_card_info(result['cardId'])
     if not card_info:
         return None
 
@@ -131,7 +162,7 @@ def is_kanji(char: str) -> bool:
     return 0x4E00 <= code_point <= 0x9FFF
 
 
-def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:
+def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="VocabularyNew") -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -145,24 +176,24 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:
     if not selected_words:
         return
 
-    def prepare_note(word: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_note(word: JishoWord) -> Dict[str, Any]:
         """Create an Anki note from a word dictionary"""
-        # Format the front with furigana
-        front = format_furigana(word.get("word", ""), word.get("reading", ""))
 
-        # Format the back with top 3 definitions
-        definitions = word.get("definitions", [])[:3]
-        back = "<br>".join(definitions)
+        # Format the front with furigana
+        front = fetch_jisho_word_furigana(word.expression)
+
+        # Format the back with definitions
+        back = "<br>".join(word.definitions[:3])
 
         # Add JLPT level if available
-        if word.get("jlpt"):
-            back += f"<br><br><i>JLPT Level: N{word['jlpt']}</i>"
+        if word.jlpt:
+            back += f"<br><br><i>JLPT Level: N{word.jlpt}</i>"
 
         # Create note
         return {
-            "deckName": "VocabularyNew",
+            "deckName": deckname,
             "modelName": "Basic",
-            "fields": {"Front": front, "Back": back},
+            "fields": {"Front": front, "Back": back, "Expression": word.expression},
             "tags": ["jisho-anki-tool"],
             "options": {"allowDuplicate": False},
         }
@@ -229,7 +260,8 @@ def get_reviewed_kanji() -> Set[str]:
     try:
         # Get card IDs of reviewed cards in the Kanji deck
         # TODO: Remove the flag bit from this later as this is really just for me!
-        card_ids = send_request("findCards", query="deck:current (-is:new OR flag:1)")
+        # TODO: Replace the deckname with a constant or config value
+        card_ids = send_request("findCards", query='deck:"All In One Kanji" (-is:new OR flag:1)')
 
         if not card_ids:
             return reviewed_kanji

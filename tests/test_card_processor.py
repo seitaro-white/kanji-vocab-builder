@@ -1,5 +1,6 @@
 import pytest
 from jisho_anki_tool import card_processor
+from jisho_anki_tool.jisho import JishoWord
 
 
 @pytest.fixture
@@ -7,42 +8,34 @@ def unordered_words():
     """Fixture providing sample words with varying JLPT levels and Kanji combinations."""
     return [
         # Word with no JLPT level (should be 4th)
-        {
-            "word": "学問",
-            "reading": "がくもん",
-            "jlpt": None,
-            "other_kanji": ["学", "問"],
-            "meaning": "learning",
-        },
+        JishoWord(
+            expression="学問",
+            kana="がくもん",
+            jlpt=0,  # None converted to 0
+            definitions=["learning"],
+        ),
         # Reviewed and JLPT 5 (should be 1st)
-        {
-            "word": "学校",
-            "reading": "がっこう",
-            "jlpt": 5,
-            "other_kanji": ["学", "校"],
-            "meaning": "school",
-        },
+        JishoWord(
+            expression="学校",
+            kana="がっこう",
+            jlpt=5,
+            definitions=["school"],
+        ),
         # Unreviewed and JLPT 2 (should be 3rd)
-        {
-            "word": "言語",
-            "reading": "げんご",
-            "jlpt": 2,
-            "other_kanji": ["言", "語"],
-            "meaning": "language",
-        },
+        JishoWord(
+            expression="言語",
+            kana="げんご",
+            jlpt=2,
+            definitions=["language"],
+        ),
         # Unreviewed and JLPT 5 (should be 2nd)
-        {
-            "word": "大学",
-            "reading": "だいがく",
-            "jlpt": 5,
-            "other_kanji": ["大", "学"],
-            "meaning": "university",
-        },
+        JishoWord(
+            expression="大学",
+            kana="だいがく",
+            jlpt=5,
+            definitions=["university"],
+        ),
     ]
-
-
-# TODO: Uncomment this test after implementing mock data I think
-# Also it needs to be decoupled from the anki search functionality
 
 
 def test_sort_and_limit_words(unordered_words):
@@ -61,7 +54,7 @@ def test_sort_and_limit_words(unordered_words):
     )
 
     # Check that the words are sorted correctly
-    result_kanji = [word["word"] for word in result]
+    result_kanji = [word.expression for word, _ in result]
     assert result_kanji == ["学校", "大学", "言語", "学問"]
 
 
