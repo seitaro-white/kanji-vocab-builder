@@ -3,7 +3,7 @@ import requests
 import json
 import jsonschema
 import os
-from jisho_anki_tool import jisho_api
+from jisho_anki_tool import jisho
 
 from typing import List
 
@@ -15,7 +15,7 @@ def test_fetch_jisho_data():
 
     # Call the function
     try:
-        result = jisho_api.fetch_jisho_word_search(kanji)
+        result = jisho.fetch_jisho_word_search(kanji)
 
         # Check if the result is a dictionary (JSON)
         assert isinstance(result, dict)
@@ -45,7 +45,7 @@ def test_search_words():
     kanji = "山"
 
     # Call the function
-    words: List[jisho_api.JishoWord] = jisho_api.search_words_containing_kanji(kanji)
+    words: List[jisho.JishoWord] = jisho.search_words_containing_kanji(kanji)
 
     # Check we get results
     assert len(words) > 0
@@ -57,7 +57,7 @@ def test_search_words():
 def test_fetch_jisho_word_furigana():
     """Test that fetch_jisho_word_furigana returns a valid furigana string."""
     word = "学校"  # A common word with kanji
-    furigana_html = jisho_api.fetch_jisho_word_furigana(word)
+    furigana_html = jisho.fetch_jisho_word_furigana(word)
 
     # Check that the result is a string
     assert isinstance(furigana_html, str)
@@ -94,4 +94,4 @@ def test_fetch_jisho_word_furigana():
 )
 def test_is_kanji(character, expected):
     """Test that is_kanji correctly identifies kanji characters."""
-    assert jisho_api.is_kanji(character) == expected
+    assert jisho.is_kanji(character) == expected

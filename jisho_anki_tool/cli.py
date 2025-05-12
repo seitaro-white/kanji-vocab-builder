@@ -6,8 +6,8 @@ from rich.table import Table
 from rich.text import Text
 
 from jisho_anki_tool.anki import connect
-from jisho_anki_tool import jisho_api
-from jisho_anki_tool.jisho_api import JishoWord
+from jisho_anki_tool import jisho
+from jisho_anki_tool.jisho import JishoWord
 from jisho_anki_tool import card_processor
 from jisho_anki_tool import utils
 from jisho_anki_tool.anki.schemas import KanjiCard
@@ -34,7 +34,7 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     click.echo("Searching for words on Jisho...")
 
 
-    words: List[JishoWord] = jisho_api.search_words_containing_kanji(kanji)
+    words: List[JishoWord] = jisho.search_words_containing_kanji(kanji)
     if not words:
         click.echo("No words found containing this Kanji.")
         return []
