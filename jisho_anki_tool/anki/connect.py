@@ -259,7 +259,8 @@ def get_reviewed_kanji() -> Set[str]:
     try:
         # Get card IDs of reviewed cards in the Kanji deck
         # TODO: Remove the flag bit from this later as this is really just for me!
-        card_ids = send_request("findCards", query="deck:current (-is:new OR flag:1)")
+        # TODO: Replace the deckname with a constant or config value
+        card_ids = send_request("findCards", query='deck:"All In One Kanji" (-is:new OR flag:1)')
 
         if not card_ids:
             return reviewed_kanji
