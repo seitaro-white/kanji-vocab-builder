@@ -6,6 +6,7 @@ import re
 # Update import to avoid circular dependency
 from jisho_anki_tool.utils import format_furigana
 from jisho_anki_tool.anki.schemas import KanjiCard
+from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
 
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
@@ -161,7 +162,7 @@ def is_kanji(char: str) -> bool:
     return 0x4E00 <= code_point <= 0x9FFF
 
 
-def add_vocab_note_to_deck(selected_words: List[Dict[str, Any]], deckname:str="VocabularyNew") -> None:
+def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="VocabularyNew") -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -175,24 +176,24 @@ def add_vocab_note_to_deck(selected_words: List[Dict[str, Any]], deckname:str="V
     if not selected_words:
         return
 
-    def prepare_note(word: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_note(word: JishoWord) -> Dict[str, Any]:
         """Create an Anki note from a word dictionary"""
-        # Format the front with furigana
-        front = format_furigana(word.get("word", ""), word.get("reading", ""))
 
-        # Format the back with top 3 definitions
-        definitions = word.get("definitions", [])[:3]
-        back = "<br>".join(definitions)
+        # Format the front with furigana
+        front = fetch_jisho_word_furigana(word.expression)
+
+        # Format the back with definitions
+        back = "<br>".join(word.definitions[:3])
 
         # Add JLPT level if available
-        if word.get("jlpt"):
-            back += f"<br><br><i>JLPT Level: N{word['jlpt']}</i>"
+        if word.jlpt:
+            back += f"<br><br><i>JLPT Level: N{word.jlpt}</i>"
 
         # Create note
         return {
             "deckName": deckname,
             "modelName": "Basic",
-            "fields": {"Front": front, "Back": back},
+            "fields": {"Front": front, "Back": back, "Expression": word.expression},
             "tags": ["jisho-anki-tool"],
             "options": {"allowDuplicate": False},
         }
