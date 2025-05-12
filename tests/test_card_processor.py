@@ -54,7 +54,7 @@ def test_sort_and_limit_words(unordered_words):
     )
 
     # Check that the words are sorted correctly
-    result_kanji = [word.expression for word in result]
+    result_kanji = [word.expression for word, _ in result]
     assert result_kanji == ["学校", "大学", "言語", "学問"]
 
 
