@@ -161,7 +161,7 @@ def is_kanji(char: str) -> bool:
     return 0x4E00 <= code_point <= 0x9FFF
 
 
-def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:
+def add_vocab_note_to_deck(selected_words: List[Dict[str, Any]], deckname:str="VocabularyNew") -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -190,7 +190,7 @@ def add_words_to_deck(selected_words: List[Dict[str, Any]]) -> None:
 
         # Create note
         return {
-            "deckName": "VocabularyNew",
+            "deckName": deckname,
             "modelName": "Basic",
             "fields": {"Front": front, "Back": back},
             "tags": ["jisho-anki-tool"],
