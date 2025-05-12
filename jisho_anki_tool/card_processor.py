@@ -1,9 +1,9 @@
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Tuple
 
 from jisho_anki_tool.anki import connect
 from jisho_anki_tool.jisho_api import JishoWord
 
-def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int = 10) -> List[JishoWord]:
+def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int = 10) -> List[Tuple[int, JishoWord]]:
     """
     Sort words based on whether other Kanji in the word have been reviewed,
     and by JLPT level. Higher priority is given to words where all Kanji
@@ -44,5 +44,5 @@ def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int 
     sortorder = sorted(sortorder, reverse=True, key=lambda x: (x[0], x[1]))
 
     # Return words using the sort order
-    sorted_words = [word for _, _, word in sortorder]
+    sorted_words = [(word, priority) for priority, _, word in sortorder]
     return sorted_words[:limit]
