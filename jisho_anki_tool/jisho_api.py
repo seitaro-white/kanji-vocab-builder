@@ -13,7 +13,7 @@ class JishoWord(BaseModel):
 
     expression: str # The proper expression of the word
     kana: str # The expression of the word in kana
-    jlpt: Optional[int] # JLPT level
+    jlpt: int # JLPT level
     definitions: List[str] # A list of definitions
 
 
@@ -122,7 +122,7 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
 
         # Extract JLPT level
         jlpt_data = item.get("jlpt", [])
-        jlpt_level = None
+        jlpt_level = 0
         if jlpt_data:
             # Extract the numeric level from strings like "jlpt-n5"
             for level in jlpt_data:
