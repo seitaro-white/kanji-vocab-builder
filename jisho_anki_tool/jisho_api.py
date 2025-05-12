@@ -1,9 +1,21 @@
 # %%
+# Imports
 import requests
 import urllib.parse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from bs4 import BeautifulSoup
+
+from pydantic import BaseModel
+
+# Classes
+class JishoWord(BaseModel):
+
+    expression: str # The proper expression of the word
+    kana: str # The expression of the word in kana
+    jlpt: Optional[int] # JLPT level
+    definitions: List[str] # A list of definitions
+
 
 def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
     """
@@ -65,7 +77,7 @@ def fetch_jisho_word_furigana(word: str) -> str:
 
 
 
-def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
+def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
     """
     Search for words containing the given Kanji character using the Jisho API.
 
@@ -78,7 +90,6 @@ def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
         - reading: Hiragana or katakana reading
         - jlpt: JLPT level (if available)
         - definitions: List of English definitions (up to 3)
-        - other_kanji: Other Kanji characters in the word (excluding the target Kanji)
 
     Raises:
         Exception: If the request fails or the response is invalid
@@ -132,25 +143,16 @@ def search_words_containing_kanji(kanji: str) -> List[Dict[str, Any]]:
                     if definition:
                         definitions.append(definition)
 
-        # Extract other Kanji characters
-        other_kanji = []
-        for char in word:
-            if char != kanji and is_kanji(char):
-                other_kanji.append(char)
 
-        # Create the result dictionary
-        result = {
-            "word": word,
-            "reading": reading,
-            "jlpt": jlpt_level,
-            "definitions": definitions,
-            "other_kanji": other_kanji,
-            "meaning": definitions[0]
-            if definitions
-            else "",  # Add first definition as meaning for display
-        }
+        # Results
+        jishoword = JishoWord(
+            expression=word,
+            kana=reading,
+            jlpt=jlpt_level,
+            definitions=definitions,
+        )
 
-        result_words.append(result)
+        result_words.append(jishoword)
 
     return result_words
 

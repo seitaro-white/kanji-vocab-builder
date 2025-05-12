@@ -5,6 +5,8 @@ import jsonschema
 import os
 from jisho_anki_tool import jisho_api
 
+from typing import List
+
 
 def test_fetch_jisho_data():
     """Test that fetch_jisho_data returns a valid response for a simple kanji query."""
@@ -43,24 +45,13 @@ def test_search_words():
     kanji = "山"
 
     # Call the function
-    words = jisho_api.search_words_containing_kanji(kanji)
-
-    # Check that we got a list
-    assert isinstance(words, list)
+    words: List[jisho_api.JishoWord] = jisho_api.search_words_containing_kanji(kanji)
 
     # Check we get results
     assert len(words) > 0
 
-    # Check the structure of the first item
-    first_word = words[0]
-    assert "word" in first_word
-    assert "reading" in first_word
-    assert "definitions" in first_word
-    assert "other_kanji" in first_word
-    assert "meaning" in first_word
-
     # The target kanji should appear in the word
-    assert kanji in first_word["word"]
+    assert kanji in words[0].expression
 
 
 def test_fetch_jisho_word_furigana():
