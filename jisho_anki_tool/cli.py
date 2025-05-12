@@ -20,7 +20,7 @@ def display_welcome_message() -> None:
     click.echo("Press 'n' to fetch the current card, select words by number, or 'q' to quit.")
 
 
-def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
+def fetch_and_display_words(kanji: str) -> List[JishoWord]:
     """
     Fetch words containing the kanji from Jisho and display them in a rich table.
 
@@ -105,12 +105,12 @@ def fetch_and_display_words(kanji: str) -> List[Dict[str, Any]]:
     # Add a separator line after the table for better visual distinction
     console.print("─" * 80, style="dim")
 
-    return sorted_words
+    return [word for word, _ in sorted_words]  # Return the displayed words
 
 
-def process_word_selection(displayed_words: List[Dict[str, Any]],
-                           pending_words: List[Dict[str, Any]],
-                           selection: str) -> List[Dict[str, Any]]:
+def process_word_selection(displayed_words: List[JishoWord],
+                           pending_words: List[JishoWord],
+                           selection: str) -> List[JishoWord]:
     """
     Process user selection of words to add to the pending list.
 
@@ -141,7 +141,7 @@ def process_word_selection(displayed_words: List[Dict[str, Any]],
         if newly_selected:
             click.echo(f"Added {len(newly_selected)} words to pending list. Total: {len(pending_words)}")
             for word in newly_selected:
-                click.echo(f"  - {word.get('word')} ({word.get('reading')})")
+                click.echo(f"  - {word.expression} ({word.kana})")
 
     except ValueError:
         click.echo("Invalid selection format. Please enter space-separated numbers (e.g., '1 3 5').")
@@ -149,7 +149,7 @@ def process_word_selection(displayed_words: List[Dict[str, Any]],
     return pending_words
 
 
-def add_pending_words_to_anki(pending_words: List[Dict[str, Any]]) -> None:
+def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
     """
     Add pending words to Anki deck.
 
