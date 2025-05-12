@@ -38,10 +38,6 @@ def unordered_words():
     ]
 
 
-# TODO: Uncomment this test after implementing mock data I think
-# Also it needs to be decoupled from the anki search functionality
-
-
 def test_sort_and_limit_words(unordered_words):
     """
     Test that words are properly sorted based on reviewed Kanji and JLPT level.
