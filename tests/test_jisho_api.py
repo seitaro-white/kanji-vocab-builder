@@ -51,7 +51,13 @@ def test_search_words():
     assert len(words) > 0
 
     # The target kanji should appear in the word
-    assert kanji in words[0].expression
+    assert words[0] == jisho.JishoWord(
+        expression="山",
+        kana="やま",
+        jlpt=5,
+        definitions=["mountain; hill", "mine", "(mountain) forest"],
+        parts_of_speech=["Noun; Counter", "Noun; Counter", "Noun; Counter"],
+    )
 
 
 @pytest.mark.parametrize(
