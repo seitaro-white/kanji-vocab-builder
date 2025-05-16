@@ -162,6 +162,33 @@ def is_kanji(char: str) -> bool:
     return 0x4E00 <= code_point <= 0x9FFF
 
 
+def prepare_note(word: JishoWord) -> Dict[str, Any]:
+    """Create an Anki note from a word dictionary"""
+
+    # Format the front with furigana
+    front = fetch_jisho_word_furigana(word.expression)
+
+    # Format the back with first definition
+    back = word.definitions[0]
+
+    # Create note
+    return {
+        "modelName": "MyJapaneseVocabulary",
+        "fields": {
+            "Front": front,
+            "Back": back,
+            "Expression": word.expression,
+            "Kana Reading": word.kana,
+            "Grammar": word.parts_of_speech[0],
+            "Definition": word.definitions[0],
+            "Additional Definitions": "\n".join(word.definitions[1:]),
+            "JLPT": f"JLPT N{word.jlpt}",
+            },
+        "tags": ["jisho-anki-tool v2"],
+        "options": {"allowDuplicate": False},
+    }
+
+
 def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="VocabularyNew") -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
@@ -176,27 +203,7 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
     if not selected_words:
         return
 
-    def prepare_note(word: JishoWord) -> Dict[str, Any]:
-        """Create an Anki note from a word dictionary"""
 
-        # Format the front with furigana
-        front = fetch_jisho_word_furigana(word.expression)
-
-        # Format the back with definitions
-        back = "<br>".join(word.definitions[:3])
-
-        # Add JLPT level if available
-        if word.jlpt:
-            back += f"<br><br><i>JLPT Level: N{word.jlpt}</i>"
-
-        # Create note
-        return {
-            "deckName": deckname,
-            "modelName": "Basic (and reversed card)",
-            "fields": {"Front": front, "Back": back, "Expression": word.expression},
-            "tags": ["jisho-anki-tool"],
-            "options": {"allowDuplicate": False},
-        }
 
     def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
         """
@@ -226,7 +233,7 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
 
     try:
         # Prepare all notes
-        notes = [prepare_note(word) for word in selected_words]
+        notes = [{"deckName": deckname} | prepare_note(w) for w in selected_words]
 
         # Add non-duplicate notes
         added_count, duplicates_count = add_non_duplicate_notes(notes)

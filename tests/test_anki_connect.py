@@ -3,6 +3,7 @@ import requests
 
 from jisho_anki_tool.anki import connect
 from jisho_anki_tool.anki.schemas import KanjiCard
+from jisho_anki_tool.jisho import JishoWord # Added import
 
 def test_ping_anki():
     """
@@ -110,3 +111,68 @@ def test_get_reviewed_vocab():
         assert len(word) > 0, "Encountered an empty string in reviewed vocabulary"
 
     print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")
+
+
+def test_prepare_note():
+    """
+    Test the prepare_note function for creating Anki note data.
+    This test relies on the live functionality of `fetch_jisho_word_furigana`
+    called within `prepare_note`.
+    """
+    # 1. Test with a standard word
+    sample_word_full = JishoWord(
+        expression="日本語",
+        kana="にほんご",
+        jlpt=3,
+        definitions=["Japanese language", "The spoken and written language of Japan."],
+        parts_of_speech=["Noun", "Proper Noun"]
+    )
+
+    # Call prepare_note - this will internally call fetch_jisho_word_furigana
+    prepared_note_full = connect.prepare_note(sample_word_full)
+
+    # Define expected output, assuming fetch_jisho_word_furigana("日本語") -> "日[に]本[ほん]語[ご]"
+    expected_note_full = {
+        "modelName": "MyJapaneseVocabulary",
+        "fields": {
+            "Front": "日本語[にほんご]", # Hardcoded expected furigana
+            "Back": "Japanese language",
+            "Expression": "日本語",
+            "Kana Reading": "にほんご",
+            "Grammar": "Noun",
+            "Primary Definition": "Japanese language",
+            "Additional Definitions": "The spoken and written language of Japan.",
+            "JLPT": "JLPT N3",
+        },
+        "tags": ["jisho-anki-tool v2"],
+        "options": {"allowDuplicate": False},
+    }
+    assert prepared_note_full == expected_note_full
+
+    # 2. Test with minimal definitions and parts_of_speech (single items)
+    sample_word_minimal = JishoWord(
+        expression="学ぶ",
+        kana="まなぶ",
+        jlpt=4,
+        definitions=["to learn"],
+        parts_of_speech=["Verb"]
+    )
+    prepared_note_minimal = connect.prepare_note(sample_word_minimal)
+
+    # Define expected output, assuming fetch_jisho_word_furigana("学ぶ") -> "学[まな]ぶ "
+    expected_note_minimal = {
+        "modelName": "MyJapaneseVocabulary",
+        "fields": {
+            "Front": "学[まな]ぶ ", # Hardcoded expected furigana
+            "Back": "to learn",
+            "Expression": "学ぶ",
+            "Kana Reading": "まなぶ",
+            "Grammar": "Verb",
+            "Primary Definition": "to learn",
+            "Additional Definitions": "",  # Expect empty string if only one definition
+            "JLPT": "JLPT N4",
+        },
+        "tags": ["jisho-anki-tool v2"],
+        "options": {"allowDuplicate": False},
+    }
+    assert prepared_note_minimal == expected_note_minimal
