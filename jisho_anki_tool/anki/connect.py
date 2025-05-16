@@ -192,7 +192,7 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
         # Create note
         return {
             "deckName": deckname,
-            "modelName": "Basic",
+            "modelName": "Basic (and reversed card)",
             "fields": {"Front": front, "Back": back, "Expression": word.expression},
             "tags": ["jisho-anki-tool"],
             "options": {"allowDuplicate": False},
