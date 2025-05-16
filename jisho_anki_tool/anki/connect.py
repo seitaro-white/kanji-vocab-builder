@@ -8,6 +8,8 @@ from jisho_anki_tool.utils import format_furigana
 from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
 
+from rich.progress import tqdm
+
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
 
@@ -54,10 +56,7 @@ def update_note(card_id: int, fields: dict) -> None:
         new_values: List of new values for the fields
     """
 
-    response = send_request("updateNote", note={
-        "id": card_id,
-        "fields": fields
-    })
+    response = send_request("updateNote", note={"id": card_id, "fields": fields})
     return response
 
 
@@ -80,6 +79,7 @@ def _get_card_info(card_id: int) -> Dict[str, Any]:
 
     return response[0]
 
+
 def get_kanji_card_info(card_id: int) -> KanjiCard:
     """
     Get detailed information about a specific card.
@@ -90,7 +90,6 @@ def get_kanji_card_info(card_id: int) -> KanjiCard:
     Returns:
         Dictionary with card information or None if the card couldn't be found
     """
-
 
     card_info = _get_card_info(card_id)
     return KanjiCard(**card_info)
@@ -106,16 +105,15 @@ def get_current_card() -> Optional[Dict[str, Any]]:
     """
 
     result = send_request("guiCurrentCard")
-    if result is None or 'cardId' not in result:
+    if result is None or "cardId" not in result:
         return None
 
     # Get card info to extract the front field (Kanji)
-    card_info = get_kanji_card_info(result['cardId'])
+    card_info = get_kanji_card_info(result["cardId"])
     if not card_info:
         return None
 
     return card_info
-
 
 
 def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
@@ -162,7 +160,9 @@ def is_kanji(char: str) -> bool:
     return 0x4E00 <= code_point <= 0x9FFF
 
 
-def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="VocabularyNew") -> None:
+def add_vocab_note_to_deck(
+    selected_words: List[JishoWord], deckname: str = "VocabularyNew"
+) -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -226,14 +226,19 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
 
     try:
         # Prepare all notes
-        notes = [prepare_note(word) for word in selected_words]
+        prepared_notes = [
+            prepare_note(word)
+            for word in tqdm(selected_words, desc="Preparing notes", unit="note")
+        ]
 
         # Add non-duplicate notes
-        added_count, duplicates_count = add_non_duplicate_notes(notes)
+        added_count, duplicates_count = add_non_duplicate_notes(prepared_notes)
 
         # Print summary
         if duplicates_count > 0 and added_count > 0:
-            print(f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes.")
+            print(
+                f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes."
+            )
         elif duplicates_count > 0:
             print(f"No notes added. Skipped {duplicates_count} duplicate notes.")
         elif added_count > 0:
@@ -242,7 +247,10 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
             print("No notes were added.")
 
     except Exception as e:
+        print("Something went wrong! Dumping words to console:")
+        print([w.expression for w in selected_words].join("\n"))
         raise Exception(f"Failed to add words to Anki: {str(e)}")
+
 
 
 def get_reviewed_kanji() -> Set[str]:
@@ -261,7 +269,9 @@ def get_reviewed_kanji() -> Set[str]:
         # Get card IDs of reviewed cards in the Kanji deck
         # TODO: Remove the flag bit from this later as this is really just for me!
         # TODO: Replace the deckname with a constant or config value
-        card_ids = send_request("findCards", query='deck:"All In One Kanji" (-is:new OR flag:1)')
+        card_ids = send_request(
+            "findCards", query='deck:"All In One Kanji" (-is:new OR flag:1)'
+        )
 
         if not card_ids:
             return reviewed_kanji
@@ -317,15 +327,24 @@ def get_reviewed_vocab() -> List[str]:
 
                 # Clean common wrapper HTML tags that might be present in the field value
                 # Similar to cleaning in get_reviewed_kanji
-                front_html_cleaned = front_html_raw.replace("<div>", "").replace("</div>", "").replace("<br>", "").strip()
+                front_html_cleaned = (
+                    front_html_raw.replace("<div>", "")
+                    .replace("</div>", "")
+                    .replace("<br>", "")
+                    .strip()
+                )
 
                 word = None
                 # Try to extract the main word from a <ruby> tag, e.g., <ruby>WORD<rt>reading</rt></ruby>
-                ruby_match = re.search(r'<ruby>(.*?)<rt>.*?</rt></ruby>', front_html_cleaned)
+                ruby_match = re.search(
+                    r"<ruby>(.*?)<rt>.*?</rt></ruby>", front_html_cleaned
+                )
 
                 if ruby_match:
                     word = ruby_match.group(1).strip()
-                elif not re.search(r'<[^>]+>', front_html_cleaned): # Check if it's plain text after cleaning
+                elif not re.search(
+                    r"<[^>]+>", front_html_cleaned
+                ):  # Check if it's plain text after cleaning
                     # If no ruby tag and no other HTML, assume the cleaned string is the word
                     word = front_html_cleaned
                 # else: The field might contain other HTML structures not handled here, or is empty after cleaning.
