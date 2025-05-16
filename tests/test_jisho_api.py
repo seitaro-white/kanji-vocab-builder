@@ -51,14 +51,23 @@ def test_search_words():
     assert len(words) > 0
 
     # The target kanji should appear in the word
-    assert kanji in words[0].expression
+    assert words[0] == jisho.JishoWord(
+        expression="山",
+        kana="やま",
+        jlpt=5,
+        definitions=["mountain; hill", "mine", "(mountain) forest"],
+        parts_of_speech=["Noun; Counter", "Noun; Counter", "Noun; Counter"],
+    )
 
 
 @pytest.mark.parametrize(
     "word, expected",
-    [("学校", "学[がっ]校[こう]"),
-    ("お風呂", "お 風[ふ]呂[ろ]"),
-    ("走る", "走[はし]る ")],
+    [
+        ("学校", "学[がっ]校[こう]"),
+        ("お風呂", "お 風[ふ]呂[ろ]"),
+        ("走る", "走[はし]る "),
+        ("借金", "借金[しゃっきん]"),
+    ],
 )
 def test_fetch_jisho_word_furigana(word, expected):
     """Test that fetch_jisho_word_furigana returns a valid furigana string."""
@@ -69,7 +78,6 @@ def test_fetch_jisho_word_furigana(word, expected):
 
     # Check for basic ruby HTML structure
     assert furigana_html == expected
-
 
 
 @pytest.mark.parametrize(

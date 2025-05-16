@@ -67,8 +67,10 @@ def fetch_jisho_word_furigana(word: str) -> str:
     characters = wordhtml.select_one("span.text").text.strip(" \n")
     furigana = [i.text for i in wordhtml.select("span.kanji")]
 
+    # In some cases (e.g. 借金) even jisho doesn't have the correct furigana mapping
+    # So we'll have to just default to applying the full furigana to the full kanji
     if len(furigana) != len([i for i in characters if is_kanji(i)]):
-        raise Exception(f"Furigana length does not match kanji length: {furigana} vs {characters}")
+        return characters + f"[{''.join(furigana)}]"
 
     # Match up each kanji with its furigana, while just adding spaces for hiragana
     anki_format, furigana_idx = "", 0
