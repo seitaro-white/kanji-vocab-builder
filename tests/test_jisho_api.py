@@ -56,9 +56,12 @@ def test_search_words():
 
 @pytest.mark.parametrize(
     "word, expected",
-    [("学校", "学[がっ]校[こう]"),
-    ("お風呂", "お 風[ふ]呂[ろ]"),
-    ("走る", "走[はし]る ")],
+    [
+        ("学校", "学[がっ]校[こう]"),
+        ("お風呂", "お 風[ふ]呂[ろ]"),
+        ("走る", "走[はし]る "),
+        ("借金", "借金[しゃっきん]"),
+    ],
 )
 def test_fetch_jisho_word_furigana(word, expected):
     """Test that fetch_jisho_word_furigana returns a valid furigana string."""
@@ -69,7 +72,6 @@ def test_fetch_jisho_word_furigana(word, expected):
 
     # Check for basic ruby HTML structure
     assert furigana_html == expected
-
 
 
 @pytest.mark.parametrize(
