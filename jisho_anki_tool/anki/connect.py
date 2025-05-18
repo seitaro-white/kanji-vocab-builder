@@ -8,7 +8,7 @@ from jisho_anki_tool.utils import format_furigana
 from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
 
-from rich.progress import tqdm
+from tqdm import tqdm
 
 # Base URL for AnkiConnect
 ANKI_CONNECT_URL = "http://localhost:8765"
