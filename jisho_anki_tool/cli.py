@@ -17,7 +17,6 @@ def display_welcome_message() -> None:
     """Display the welcome message when starting the tool."""
     click.echo("Welcome to the Jisho Anki Tool!")
     click.echo("This tool helps you find and add words containing the current Kanji in your Anki deck.")
-    click.echo("Press 'n' to fetch the current card, select words by number, or 'q' to quit.")
 
 
 def fetch_and_display_words(kanji: str) -> List[JishoWord]:
@@ -197,7 +196,7 @@ def get_user_input(pending_count: int) -> str:
         User input string
     """
     pending_msg = f" ({pending_count} words pending)" if pending_count else ""
-    return click.prompt(f"\nEnter 'n' for next card, integers to select words, or 'q' to quit{pending_msg}")
+    return click.prompt(f"\nPress 'n' to fetch the current card, input a kanji directly, or 'q' to quit.{pending_msg}")
 
 
 @click.command()
@@ -231,6 +230,10 @@ def jisho_anki():
                 click.echo("Goodbye!")
                 sys.exit(0)
 
+            # You can also just enter a kanji directly
+            elif connect.is_kanji(user_input):
+                kanji = user_input
+                displayed_words = fetch_and_display_words(kanji)
 
 
             else:
