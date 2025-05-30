@@ -211,10 +211,10 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
             Tuple of (added_count, duplicates_count)
         """
         # Check which notes can be added
-        can_add_result = send_request("canAddNotes", notes=notes)
+        can_add_result = send_request("canAddNotesWithErrorDetail", notes=notes)
 
         # Filter out notes that would cause duplicate errors
-        notes_to_add = [note for i, note in enumerate(notes) if can_add_result[i]]
+        notes_to_add = [note for i, note in enumerate(notes) if can_add_result[i]["canAdd"]]
 
         # Calculate counts
         duplicates_count = len(notes) - len(notes_to_add)
@@ -231,8 +231,9 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
 
     try:
         # Prepare all notes
+        # TODO: Replace hardcoded deck name with a constant or config value
         prepared_notes = [
-            prepare_note(word)
+            {"deckName": "VocabularyNew"} | prepare_note(word)
             for word in tqdm(selected_words, desc="Preparing notes", unit="note")
         ]
 
