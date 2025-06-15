@@ -1,23 +1,13 @@
-import click
 import sys
-from typing import List, Dict, Any, Optional, Tuple
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
+from typing import List, Optional
 
-from jisho_anki_tool.anki import connect
-from jisho_anki_tool import jisho
-from jisho_anki_tool.jisho import JishoWord
-from jisho_anki_tool import card_processor
-from jisho_anki_tool import utils
+import click
+
+from jisho_anki_tool.anki import connect as ankiconnect
+
+from jisho_anki_tool import card_processor, jisho, render, utils
 from jisho_anki_tool.anki.schemas import KanjiCard
-from jisho_anki_tool.rendering import render_words_table
-
-
-def display_welcome_message() -> None:
-    """Display the welcome message when starting the tool."""
-    click.echo("Welcome to the Jisho Anki Tool!")
-    click.echo("This tool helps you find and add words containing the current Kanji in your Anki deck.")
+from jisho_anki_tool.jisho import JishoWord
 
 
 def fetch_and_display_words(kanji: str) -> List[JishoWord]:
@@ -33,23 +23,27 @@ def fetch_and_display_words(kanji: str) -> List[JishoWord]:
     click.echo(f"Current Kanji: {kanji}")
     click.echo("Searching for words on Jisho...")
 
-
+    # Fetch any words containing Kanji from Jisho
     words: List[JishoWord] = jisho.search_words_containing_kanji(kanji)
     if not words:
         click.echo("No words found containing this Kanji.")
         return []
 
+    # Get list of already reviewed words from Anki
+    reviewed_vocab = ankiconnect.get_reviewed_vocab()
+
+    #　
     click.echo("Sorting words by review status and JLPT level...")
-    sorted_words = card_processor.sort_and_limit_words(words, kanji, 10)
+    sorted_words = card_processor.sort_and_limit_words(words, kanji, 20)
 
-    render_words_table(sorted_words)
+    render.words_table(sorted_words, reviewed_vocab)
 
-    return [w for w,_ in sorted_words]  # Return the displayed words
+    return [w for w, _ in sorted_words]  # Return the displayed words
 
 
-def process_word_selection(displayed_words: List[JishoWord],
-                           pending_words: List[JishoWord],
-                           selection: str) -> List[JishoWord]:
+def process_word_selection(
+    displayed_words: List[JishoWord], pending_words: List[JishoWord], selection: str
+) -> List[JishoWord]:
     """
     Process user selection of words to add to the pending list.
 
@@ -78,12 +72,16 @@ def process_word_selection(displayed_words: List[JishoWord],
                 click.echo(f"Invalid selection: {idx} - out of range.")
 
         if newly_selected:
-            click.echo(f"Added {len(newly_selected)} words to pending list. Total: {len(pending_words)}")
+            click.echo(
+                f"Added {len(newly_selected)} words to pending list. Total: {len(pending_words)}"
+            )
             for word in newly_selected:
                 click.echo(f"  - {word.expression} ({word.kana})")
 
     except ValueError:
-        click.echo("Invalid selection format. Please enter space-separated numbers (e.g., '1 3 5').")
+        click.echo(
+            "Invalid selection format. Please enter space-separated numbers (e.g., '1 3 5')."
+        )
 
     return pending_words
 
@@ -99,7 +97,7 @@ def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
         return
 
     click.echo(f"Adding {len(pending_words)} words to Anki...")
-    connect.add_vocab_note_to_deck(pending_words)
+    ankiconnect.add_vocab_note_to_deck(pending_words)
     click.echo("Words successfully added to Anki!")
 
 
@@ -112,10 +110,12 @@ def handle_next_card() -> Optional[str]:
     """
     click.echo("Fetching current Kanji from Anki...")
     try:
-        card: KanjiCard = connect.get_current_card()
+        card: KanjiCard = ankiconnect.get_current_card()
         kanji = card.fields.Kanji.value
         if not kanji:
-            click.echo("No Kanji card is currently displayed in Anki. Please open a card.")
+            click.echo(
+                "No Kanji card is currently displayed in Anki. Please open a card."
+            )
             return None
         return kanji
     except Exception as e:
@@ -134,7 +134,9 @@ def get_user_input(pending_count: int) -> str:
         User input string
     """
     pending_msg = f" ({pending_count} words pending)" if pending_count else ""
-    return click.prompt(f"\nPress 'n' to fetch the current card, input a kanji directly, c to commit pending words or 'q' to quit.{pending_msg}")
+    return click.prompt(
+        f"\nPress 'n' to fetch the current card, input a kanji directly, c to commit pending words or 'q' to quit.{pending_msg}"
+    )
 
 
 @click.command()
@@ -143,46 +145,49 @@ def jisho_anki():
     CLI tool to fetch Kanji cards from Anki, search for words on Jisho,
     and add selected words back to Anki.
     """
-    display_welcome_message()
+
+    render.welcome_message()
 
     displayed_words = []  # Store the last displayed word list
-    pending_words = []    # Store selected words to add to Anki later
+    pending_words = []  # Store selected words to add to Anki later
 
     while True:
         try:
             user_input = get_user_input(len(pending_words))
 
             # Fetch new card and display words
-            if user_input.lower() == 'n':
+            if user_input.lower() == "n":
                 kanji = handle_next_card()
                 if kanji:
                     displayed_words = fetch_and_display_words(kanji)
 
             # Select words to add to pending list
             elif any(c.isdigit() for c in user_input):
-                pending_words = process_word_selection(displayed_words, pending_words, user_input)
+                pending_words = process_word_selection(
+                    displayed_words, pending_words, user_input
+                )
 
             # Commit pending words to Anki
-            elif user_input.lower() == 'c':
+            elif user_input.lower() == "c":
                 click.echo(f"Committing {len(pending_words)} pending words to Anki...")
                 add_pending_words_to_anki(pending_words)
-                pending_words.clear() # I've known python for 5 years and have only just discovered this method!
-
+                pending_words.clear()  # I've known python for 5 years and have only just discovered this method!
 
             # Quit the program
-            elif user_input.lower() == 'q':
-                confirm_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki", default=True)
+            elif user_input.lower() == "q":
+                confirm_add = click.confirm(
+                    f"You have {len(pending_words)} words pending. Add them to Anki",
+                    default=True,
+                )
                 if confirm_add:
                     add_pending_words_to_anki(pending_words)
                 click.echo("Goodbye!")
                 sys.exit(0)
 
-
             # You can also just enter a kanji directly
-            elif connect.is_kanji(user_input):
+            elif ankiconnect.is_kanji(user_input):
                 kanji = user_input
                 displayed_words = fetch_and_display_words(kanji)
-
 
             else:
                 click.echo("Invalid input. Enter 'n', numbers, or 'q'.")
