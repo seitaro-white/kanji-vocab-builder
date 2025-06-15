@@ -9,6 +9,8 @@ from rich.text import Text
 from jisho_anki_tool.anki import connect
 from jisho_anki_tool.jisho import JishoWord
 
+from jamdict.jmdict import JMDEntry
+
 console = Console()
 
 
@@ -31,8 +33,8 @@ def words_table(
 
     table = Table(box=None, show_header=False)
 
-    table.add_column("Index", style="bold yellow2")
-    table.add_column("Word", style="chartreuse3")
+    table.add_column("Index", style="yellow2")
+    table.add_column("Word", style="bold chartreuse3")
     table.add_column("Reading", style="cornflower_blue")
     table.add_column("JLPT",)
     table.add_column("Priority", style="magenta")
@@ -77,3 +79,26 @@ def words_table(
     console.print("\nFound words (sorted by reviewed Kanji and JLPT level):")
     console.print(table)
     console.print("─" * 80, style="dim")
+
+
+def word(word: JishoWord) -> None:
+    """Render a single word with its details"""
+
+    console.print(f"[bold green1]{word.expression}[/bold green1] [cornflower_blue]({word.kana})[/cornflower_blue]")
+
+    table = Table(box=None, show_header=False)
+
+    table.add_column("Definition", style="bold yellow2")
+    table.add_column("Grammar", style="chartreuse3")
+
+
+    for i in range(len(word.definitions)):
+        definition = word.definitions[i]
+        grammar = word.parts_of_speech[i]
+
+        table.add_row(
+            Text(definition, style="grey74"),
+            Text(grammar, style="light_slate_grey")
+        )
+
+    console.print(table)

@@ -5,12 +5,18 @@ import click
 
 from jisho_anki_tool.anki import connect as ankiconnect
 
-from jisho_anki_tool import card_processor, jisho, render, utils
+from jisho_anki_tool import card_processor, jisho, render
+from jisho_anki_tool.utils import parse_integer_selection, is_kanji, is_kotoba
 from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord
 
+from jamdict import Jamdict
 
-def fetch_and_display_words(kanji: str) -> List[JishoWord]:
+
+# Initialize Jamdict for word lookups
+jam = Jamdict()
+
+def fetch_words_from_kanji(kanji: str) -> List[JishoWord]:
     """
     Fetch words containing the kanji from Jisho and display them in a rich table.
 
@@ -20,8 +26,6 @@ def fetch_and_display_words(kanji: str) -> List[JishoWord]:
     Returns:
         List of sorted words that were displayed to the user
     """
-    click.echo(f"Current Kanji: {kanji}")
-    click.echo("Searching for words on Jisho...")
 
     # Fetch any words containing Kanji from Jisho
     words: List[JishoWord] = jisho.search_words_containing_kanji(kanji)
@@ -39,6 +43,35 @@ def fetch_and_display_words(kanji: str) -> List[JishoWord]:
     render.words_table(sorted_words, reviewed_vocab)
 
     return [w for w, _ in sorted_words]  # Return the displayed words
+
+def fetch_word_from_word(word: str) -> str:
+    """ Fetch a single word using jamdict"""
+
+    result = jam.lookup(word)
+    entry = result.entries[0] if result.entries else None
+
+    if entry:
+        # Parse jamdict entry to JishoWord
+        kanji = entry.kanji_forms[0].text
+        kana = entry.kana_forms[0].text
+        jplt = 0
+
+        senses = entry[:3]
+        glosses = [sense.gloss[0].text for sense in senses]
+        pos = [sense.pos[0] for sense in senses]
+
+
+        jisho_word = JishoWord(
+            expression=kanji,
+            kana=kana,
+            jlpt=jplt,
+            definitions=glosses,
+            parts_of_speech=pos,
+        )
+
+        render.word(jisho_word)
+
+        return jisho_word
 
 
 def process_word_selection(
@@ -60,7 +93,7 @@ def process_word_selection(
         return pending_words
 
     try:
-        selected_indices = utils.parse_selection(selection)
+        selected_indices = parse_integer_selection(selection)
         newly_selected = []
 
         for idx in selected_indices:
@@ -159,7 +192,7 @@ def jisho_anki():
             if user_input.lower() == "n":
                 kanji = handle_next_card()
                 if kanji:
-                    displayed_words = fetch_and_display_words(kanji)
+                    displayed_words = fetch_words_from_kanji(kanji)
 
             # Select words to add to pending list
             elif any(c.isdigit() for c in user_input):
@@ -185,9 +218,25 @@ def jisho_anki():
                 sys.exit(0)
 
             # You can also just enter a kanji directly
-            elif ankiconnect.is_kanji(user_input):
-                kanji = user_input
-                displayed_words = fetch_and_display_words(kanji)
+            elif is_kanji(user_input):
+                click.echo(f"Current Kanji: {kanji}\nSearching for words on Jisho...")
+
+                displayed_words = fetch_words_from_kanji(user_input)
+
+            # Or look up a single word
+            elif is_kotoba(user_input):
+                click.echo(f"Looking up word: {user_input}")
+                word = fetch_word_from_word(user_input)
+                add_confirm = click.confirm(
+                    f"Do you want to add {word.expression} ({word.kana}) to pending words?",
+                    default=True,
+                )
+                if add_confirm:
+                    pending_words.append(word)
+                    click.echo(f"Added {word.expression} to pending words.")
+
+
+
 
             else:
                 click.echo("Invalid input. Enter 'n', numbers, or 'q'.")
