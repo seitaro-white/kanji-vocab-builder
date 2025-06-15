@@ -287,15 +287,7 @@ def get_reviewed_kanji() -> Set[str]:
         for card in cards_info:
             if "fields" in card and "Kanji" in card["fields"]:
                 kanji = card["fields"]["Kanji"]["value"]
-                # Remove HTML and get clean Kanji character
-                kanji = (
-                    kanji.replace("<div>", "")
-                    .replace("</div>", "")
-                    .replace("<br>", "")
-                    .strip()
-                )
-                if kanji and len(kanji) == 1:  # Ensure it's a single character
-                    reviewed_kanji.add(kanji)
+                reviewed_kanji.add(kanji)
 
         return reviewed_kanji
     except Exception as e:
