@@ -1,0 +1,45 @@
+""" Rendering functions for displaying on CLI """
+
+
+from typing import List, Tuple
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+from jisho_anki_tool.jisho import JishoWord
+from jisho_anki_tool.anki import connect
+
+def render_words_table(sorted_words: List[Tuple[JishoWord, bool]]) -> None:
+    console = Console()
+    table = Table(box=None, show_header=False)
+    table.add_column("Index", style="yellow2")
+    table.add_column("Word", style="chartreuse3")
+    table.add_column("Reading", style="cornflower_blue")
+    table.add_column("JLPT")
+    table.add_column("Priority", style="magenta")
+    table.add_column("Already in Deck", style="light_slate_grey")
+    table.add_column("Definition", style="grey74")
+
+    jlpt_colors = {
+        5: "#209c05", 4: "#85e62c", 3: "#ebff0a",
+        2: "#f2ce02", 1: "#ff0a0a", 0: "#c3c4c7",
+    }
+
+    reviewed_vocab = connect.get_reviewed_vocab()
+    for idx, (word, priority) in enumerate(sorted_words, 1):
+        # JLPT
+        jlpt_text = Text(f"N{word.jlpt}", style=jlpt_colors.get(word.jlpt, "#c3c4c7")) \
+                    if word.jlpt else Text("")
+        # Priority
+        priority_text = Text("R", style="green") if priority else Text("N", style="red")
+        # Already in deck?
+        in_deck = Text("Y", style="grey37") if word.expression in reviewed_vocab \
+                  else Text("N", style="medium_violet_red")
+
+        table.add_row(
+            f"{idx}.", word.expression, word.kana,
+            jlpt_text, priority_text, in_deck, word.definitions[0]
+        )
+
+    console.print("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    console.print(table)
+    console.print("─" * 80, style="dim")

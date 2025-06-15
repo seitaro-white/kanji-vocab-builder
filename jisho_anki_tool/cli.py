@@ -11,6 +11,7 @@ from jisho_anki_tool.jisho import JishoWord
 from jisho_anki_tool import card_processor
 from jisho_anki_tool import utils
 from jisho_anki_tool.anki.schemas import KanjiCard
+from jisho_anki_tool.rendering import render_words_table
 
 
 def display_welcome_message() -> None:
@@ -41,70 +42,9 @@ def fetch_and_display_words(kanji: str) -> List[JishoWord]:
     click.echo("Sorting words by review status and JLPT level...")
     sorted_words = card_processor.sort_and_limit_words(words, kanji, 10)
 
-    # Create a rich table for display
-    console = Console()
-    table = Table(box=None, show_header=False)
+    render_words_table(sorted_words)
 
-    # Add columns (without headers)
-    table.add_column("Index", style="yellow2")
-    table.add_column("Word", style="chartreuse3")
-    table.add_column("Reading", style="cornflower_blue")
-    table.add_column("JLPT")
-    table.add_column("Priority", style="magenta")
-    table.add_column("Already in Deck", style="light_slate_grey")
-    table.add_column("Definition", style="grey74")
-
-    # JLPT level color mapping
-    jlpt_colors = {
-        5: "#209c05",
-        4: "#85e62c",
-        3: "#ebff0a",
-        2: "#f2ce02",
-        1: "#ff0a0a",
-        0: "#c3c4c7",
-    }
-
-    # Add rows for each word
-    for ct, (word, priority) in enumerate(sorted_words, 1):
-
-        if word.jlpt:
-            jlpt_text = Text(f"N{word.jlpt}")
-            jlpt_text.stylize(jlpt_colors.get(word.jlpt, "#c3c4c7"))  # Default color for unknown levels
-        else:
-            jlpt_text = ""
-
-        # Create styled priority text - red for "N" (not reviewed), green for "R" (reviewed)
-        if priority:
-            priority_text = Text("R", style="green")
-        else:
-            priority_text = Text("N", style="red")
-
-        # Check if the word itself is already in our reviewed vocabulary
-        reviewed_vocabulary = connect.get_reviewed_vocab()
-        if word.expression in reviewed_vocabulary:
-            reviewed_text = Text("Y", style="grey37")
-        else:
-            reviewed_text = Text("N", style="medium_violet_red")
-
-
-        table.add_row(
-            str(ct) + ".",                # Index
-            word.expression,        # Word
-            word.kana,     # Reading
-            jlpt_text,                   # JLPT level with specific color
-            priority_text,
-            reviewed_text,               # Whether the other Kanji has been reviewed at some point
-            word.definitions[0]     # Meaning
-        )
-
-    # Display the table
-    click.echo("\nFound words (sorted by reviewed Kanji and JLPT level):")
-    console.print(table)
-
-    # Add a separator line after the table for better visual distinction
-    console.print("─" * 80, style="dim")
-
-    return [word for word, _ in sorted_words]  # Return the displayed words
+    return [w for w,_ in sorted_words]  # Return the displayed words
 
 
 def process_word_selection(displayed_words: List[JishoWord],
