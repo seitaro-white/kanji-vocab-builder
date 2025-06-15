@@ -3,6 +3,7 @@
 from typing import List, Tuple
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -16,14 +17,16 @@ console = Console()
 
 def welcome_message() -> None:
     """Display the welcome message when starting the tool."""
-
-    console.print("[bold red]Welcome to Jisho Anki Tool![/bold red]")
+    console.clear()
+    # a nice panel banner
+    banner = Text("Jisho-Anki Toolkit", justify="center", style="bold magenta")
+    subtitle = Text("Powered by Jisho & Anki-Connect", style="yellow")
+    panel = Panel(banner, subtitle=subtitle, border_style="bright_blue")
+    console.print(panel)
+    # tiny help line
     console.print(
-        "[red]This tool allows you to search for Japanese words containing a specific Kanji, "
-        "sort them by review status and JLPT level, and add them to your Anki deck.[/red]"
+        "[dim]n[/dim]: next kanji  •  [dim]1 2 3[/dim]: select  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
     )
-    console.print("Type 'n' to fetch words or 'q' to quit at any time.\n")
-    console.print("─" * 80, style="dim")
 
 
 def words_table(
