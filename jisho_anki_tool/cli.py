@@ -11,7 +11,7 @@ from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord
 
 from jamdict import Jamdict
-from jisho_anki_tool.render import console
+from jisho_anki_tool.render import console, info, success, error
 
 
 # Initialize Jamdict for word lookups
@@ -37,15 +37,14 @@ def fetch_words_from_kanji(kanji: str) -> List[JishoWord]:
     # Get list of already reviewed words from Anki
     reviewed_vocab = ankiconnect.get_reviewed_vocab()
 
-    #　
-    click.echo("Sorting words by review status and JLPT level...")
     sorted_words = card_processor.sort_and_limit_words(words, kanji, 20)
 
     render.words_table(sorted_words, reviewed_vocab)
 
     return [w for w, _ in sorted_words]  # Return the displayed words
 
-def fetch_word_from_word(word: str) -> str:
+
+def fetch_word_from_word(word: str) -> Optional[JishoWord]:
     """ Fetch a single word using jamdict"""
 
     result = jam.lookup(word)
@@ -73,6 +72,8 @@ def fetch_word_from_word(word: str) -> str:
         render.word(jisho_word)
 
         return jisho_word
+
+    return None
 
 
 def process_word_selection(
@@ -106,11 +107,9 @@ def process_word_selection(
                 click.echo(f"Invalid selection: {idx} - out of range.")
 
         if newly_selected:
-            click.echo(
-                f"Added {len(newly_selected)} words to pending list. Total: {len(pending_words)}"
-            )
+            success(f"Added {len(newly_selected)} word(s) to pending list (total: {len(pending_words)})")
             for word in newly_selected:
-                click.echo(f"  - {word.expression} ({word.kana})")
+                info(f"{word.expression} ({word.kana})")
 
     except ValueError:
         click.echo(
@@ -120,41 +119,34 @@ def process_word_selection(
     return pending_words
 
 
-def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
-    """
-    Add pending words to Anki deck.
+def handle_next_card() -> Optional[str]:
+    """Handle the 'n' command to fetch the next card from Anki."""
+    with console.status("[bold]Fetching current Kanji from Anki…[/bold]", spinner="dots"):
+        try:
+            card: KanjiCard = ankiconnect.get_current_card()
+        except Exception as e:
+            error(f"AnkiConnect error: {e}")
+            return None
 
-    Args:
-        pending_words: List of words to add to Anki
-    """
+    kanji = card.fields.Kanji.value
+    if not kanji:
+        error("No Kanji card is open in Anki.")
+        return None
+
+    info(f"[bold yellow]{kanji}[/bold yellow]")
+    return kanji
+
+
+def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
+    """Add pending words to Anki deck."""
     if not pending_words:
+        info("No words to add.")
         return
 
-    click.echo(f"Adding {len(pending_words)} words to Anki...")
-    ankiconnect.add_vocab_note_to_deck(pending_words)
-    click.echo("Words successfully added to Anki!")
+    with console.status(f"[bold]Adding {len(pending_words)} words to Anki…[/bold]", spinner="bouncingBar"):
+        ankiconnect.add_vocab_note_to_deck(pending_words)
 
-
-def handle_next_card() -> Optional[str]:
-    """
-    Handle the 'n' command to fetch the next card from Anki.
-
-    Returns:
-        The kanji from the current card, or None if there was an error
-    """
-    click.echo("Fetching current Kanji from Anki...")
-    try:
-        card: KanjiCard = ankiconnect.get_current_card()
-        kanji = card.fields.Kanji.value
-        if not kanji:
-            click.echo(
-                "No Kanji card is currently displayed in Anki. Please open a card."
-            )
-            return None
-        return kanji
-    except Exception as e:
-        click.echo(f"Error: {str(e)}")
-        return None
+    success(f"{len(pending_words)} words successfully added!")
 
 
 def get_user_input(pending_count: int) -> str:
@@ -211,21 +203,25 @@ def jisho_anki():
 
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
-                click.echo(f"Current Kanji: {user_input}\nSearching for words on Jisho...")
-
-                displayed_words = fetch_words_from_kanji(user_input)
+                with console.status(f"Searching for words containing [yellow2]{user_input}[/yellow2]…", spinner="dots"):
+                    displayed_words = fetch_words_from_kanji(user_input)
 
             # Or look up a single word
             elif is_kotoba(user_input):
-                click.echo(f"Looking up word: {user_input}")
-                word = fetch_word_from_word(user_input)
-                add_confirm = click.confirm(
-                    f"Do you want to add {word.expression} ({word.kana}) to pending words?",
-                    default=True,
-                )
-                if add_confirm:
-                    pending_words.append(word)
-                    click.echo(f"Added {word.expression} to pending words.")
+                with console.status(f"[bold]Looking up word {user_input}…[/bold]", spinner="dots"):
+                    word = fetch_word_from_word(user_input)
+
+                if word:
+                    add_confirm = click.confirm(
+                        f"Do you want to add {word.expression} ({word.kana}) to pending words?",
+                        default=True,
+                    )
+                    if add_confirm:
+                        pending_words.append(word)
+                        success(f"Added [bold]{word.expression}[/bold] to pending words.")
+
+                else:
+                    render.error(f"Word '{user_input}' not found in JmDict.")
 
 
             else:
