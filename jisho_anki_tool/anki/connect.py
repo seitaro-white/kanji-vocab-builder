@@ -4,7 +4,7 @@ from typing import List, Dict, Set, Any, Optional, Tuple
 import re
 
 # Update import to avoid circular dependency
-from jisho_anki_tool.utils import format_furigana
+from jisho_anki_tool.utils import is_kanji
 from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
 
@@ -142,22 +142,7 @@ def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
     return kanji_list
 
 
-def is_kanji(char: str) -> bool:
-    """
-    Check if a character is a Kanji.
 
-    Args:
-        char: The character to check
-
-    Returns:
-        True if the character is a Kanji, False otherwise
-    """
-    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
-    if len(char) != 1:
-        return False
-
-    code_point = ord(char)
-    return 0x4E00 <= code_point <= 0x9FFF
 
 
 def prepare_note(word: JishoWord) -> Dict[str, Any]:
