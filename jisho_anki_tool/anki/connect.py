@@ -181,13 +181,15 @@ def prepare_note(word: JishoWord) -> Dict[str, Any]:
             "Definition": word.definitions[0],
             "Additional Definitions": "\n".join(word.definitions[1:]),
             "JLPT": f"JLPT N{word.jlpt}",
-            },
+        },
         "tags": ["jisho-anki-tool v2"],
         "options": {"allowDuplicate": False},
     }
 
 
-def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="VocabularyNew") -> None:
+def add_vocab_note_to_deck(
+    selected_words: List[JishoWord], deckname: str = "VocabularyNew"
+) -> None:
     """
     Add selected words to the 'VocabularyNew' Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
@@ -201,8 +203,6 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
     if not selected_words:
         return
 
-
-
     def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
         """
         Add non-duplicate notes to Anki
@@ -214,7 +214,9 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
         can_add_result = send_request("canAddNotesWithErrorDetail", notes=notes)
 
         # Filter out notes that would cause duplicate errors
-        notes_to_add = [note for i, note in enumerate(notes) if can_add_result[i]["canAdd"]]
+        notes_to_add = [
+            note for i, note in enumerate(notes) if can_add_result[i]["canAdd"]
+        ]
 
         # Calculate counts
         duplicates_count = len(notes) - len(notes_to_add)
@@ -229,10 +231,8 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
         # Return counts
         return len(notes_to_add), duplicates_count
 
-
     # Prepare all notes
     # TODO: Replace hardcoded deck name with a constant or config value
-
 
     prepared_notes = []
     for word in tqdm(selected_words, desc="Preparing notes", unit="note"):
@@ -248,17 +248,13 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
 
     # Print summary
     if duplicates_count > 0 and added_count > 0:
-        print(
-            f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes."
-        )
+        print(f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes.")
     elif duplicates_count > 0:
         print(f"No notes added. Skipped {duplicates_count} duplicate notes.")
     elif added_count > 0:
         print(f"Added {added_count} notes.")
     else:
-            print("No notes were added.")
-
-
+        print("No notes were added.")
 
 
 def get_reviewed_kanji() -> Set[str]:
@@ -322,43 +318,14 @@ def get_reviewed_vocab() -> List[str]:
         # Reviewed cards are those that are not new.
         card_ids = send_request("findCards", query="deck:VocabularyNew")
 
-        if not card_ids:
-            return reviewed_vocab
-
         # Get card info for each card
         cards_info = send_request("cardsInfo", cards=card_ids)
 
-        # Extract the word from the 'Front' field of each card
-        for card in cards_info:
-            if "fields" in card and "Front" in card["fields"]:
-                front_html_raw = card["fields"]["Front"]["value"]
-
-                # Clean common wrapper HTML tags that might be present in the field value
-                # Similar to cleaning in get_reviewed_kanji
-                front_html_cleaned = (
-                    front_html_raw.replace("<div>", "")
-                    .replace("</div>", "")
-                    .replace("<br>", "")
-                    .strip()
-                )
-
-                word = None
-                # Try to extract the main word from a <ruby> tag, e.g., <ruby>WORD<rt>reading</rt></ruby>
-                ruby_match = re.search(
-                    r"<ruby>(.*?)<rt>.*?</rt></ruby>", front_html_cleaned
-                )
-
-                if ruby_match:
-                    word = ruby_match.group(1).strip()
-                elif not re.search(
-                    r"<[^>]+>", front_html_cleaned
-                ):  # Check if it's plain text after cleaning
-                    # If no ruby tag and no other HTML, assume the cleaned string is the word
-                    word = front_html_cleaned
-                # else: The field might contain other HTML structures not handled here, or is empty after cleaning.
-
-                if word:  # Ensure word is not an empty string
-                    reviewed_vocab.append(word)
+        reviewed_vocab = [
+            i["fields"]["Expression"]["value"]
+            for i in cards_info
+            if "Expression" in i["fields"]
+        ]
 
         return reviewed_vocab
     except Exception as e:
