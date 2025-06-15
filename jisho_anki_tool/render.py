@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.rule import Rule
 
 from jisho_anki_tool.anki import connect
 from jisho_anki_tool.jisho import JishoWord
@@ -19,13 +20,13 @@ def welcome_message() -> None:
     """Display the welcome message when starting the tool."""
     console.clear()
     # a nice panel banner
-    banner = Text("Jisho-Anki Toolkit", justify="center", style="bold magenta")
-    subtitle = Text("Powered by Jisho & Anki-Connect", style="yellow")
+    banner = Text("Anki 単語 Builder", justify="center", style="bold magenta")
+    subtitle = Text("Add vocabulary to Anki", style="yellow")
     panel = Panel(banner, subtitle=subtitle, border_style="bright_blue")
     console.print(panel)
     # tiny help line
     console.print(
-        "[dim]n[/dim]: next kanji  •  [dim]1 2 3[/dim]: select  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
+        "[dim]山[/dim]: Search Kanji   •  [dim]火山[/dim]: Search Word  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
     )
 
 
@@ -78,30 +79,44 @@ def words_table(
             in_deck,
             word.definitions[0],
         )
-
-    console.print("\nFound words (sorted by reviewed Kanji and JLPT level):")
+    # Add a separator line
+    console.print(Rule(style="dim"))
     console.print(table)
-    console.print("─" * 80, style="dim")
+    console.print(Rule(style="dim"))
 
 
 def word(word: JishoWord) -> None:
     """Render a single word with its details"""
 
-    console.print(f"[bold green1]{word.expression}[/bold green1] [cornflower_blue]({word.kana})[/cornflower_blue]")
+    console.print(f"  [bold green1]{word.expression}[/bold green1]  ([cornflower_blue]{word.kana}[/cornflower_blue])")
 
     table = Table(box=None, show_header=False)
 
-    table.add_column("Definition", style="bold yellow2")
+    table.add_column("Index", style="bold yellow2")
+    table.add_column("Definition", style="white")
     table.add_column("Grammar", style="chartreuse3")
 
-
-    for i in range(len(word.definitions)):
+    for ct, i in enumerate(range(len(word.definitions))):
         definition = word.definitions[i]
         grammar = word.parts_of_speech[i]
 
         table.add_row(
+            f" {ct + 1}.",
             Text(definition, style="grey74"),
             Text(grammar, style="light_slate_grey")
         )
 
     console.print(table)
+    console.print(Rule(style="dim"))
+
+
+def info(msg: str) -> None:
+    console.print(f"  [cyan]{msg}[/cyan]")
+
+
+def success(msg: str) -> None:
+    console.print(f"[bold green]O[/bold green]  [/green]{msg}[/green]")
+
+
+def error(msg: str) -> None:
+    console.print(f"[bold red]X[/bold red]  [/red]{msg}[/red]")
