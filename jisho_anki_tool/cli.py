@@ -11,6 +11,7 @@ from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord
 
 from jamdict import Jamdict
+from jisho_anki_tool.render import console
 
 
 # Initialize Jamdict for word lookups
@@ -57,7 +58,7 @@ def fetch_word_from_word(word: str) -> str:
         jplt = 0
 
         senses = entry[:3]
-        glosses = [sense.gloss[0].text for sense in senses]
+        glosses = ["; ".join([i.text for i in sense.gloss]) for sense in senses]
         pos = [sense.pos[0] for sense in senses]
 
 
@@ -157,19 +158,10 @@ def handle_next_card() -> Optional[str]:
 
 
 def get_user_input(pending_count: int) -> str:
-    """
-    Get user input with context about pending words.
-
-    Args:
-        pending_count: Number of pending words
-
-    Returns:
-        User input string
-    """
-    pending_msg = f" ({pending_count} words pending)" if pending_count else ""
-    return click.prompt(
-        f"\nPress 'n' to fetch the current card, input a kanji directly, c to commit pending words or 'q' to quit.{pending_msg}"
-    )
+    """Get user input with a coloured Rich prompt."""
+    pending = f"[yellow]({pending_count} pending)[/yellow] " if pending_count else ""
+    # use console.input so Rich markup is rendered
+    return console.input(f"{pending}[bold green]> [/bold green]")
 
 
 @click.command()
@@ -219,7 +211,7 @@ def jisho_anki():
 
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
-                click.echo(f"Current Kanji: {kanji}\nSearching for words on Jisho...")
+                click.echo(f"Current Kanji: {user_input}\nSearching for words on Jisho...")
 
                 displayed_words = fetch_words_from_kanji(user_input)
 
@@ -234,8 +226,6 @@ def jisho_anki():
                 if add_confirm:
                     pending_words.append(word)
                     click.echo(f"Added {word.expression} to pending words.")
-
-
 
 
             else:
