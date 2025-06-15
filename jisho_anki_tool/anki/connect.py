@@ -229,33 +229,35 @@ def add_vocab_note_to_deck(selected_words: List[JishoWord], deckname:str="Vocabu
         # Return counts
         return len(notes_to_add), duplicates_count
 
-    try:
-        # Prepare all notes
-        # TODO: Replace hardcoded deck name with a constant or config value
-        prepared_notes = [
-            {"deckName": "VocabularyNew"} | prepare_note(word)
-            for word in tqdm(selected_words, desc="Preparing notes", unit="note")
-        ]
 
-        # Add non-duplicate notes
-        added_count, duplicates_count = add_non_duplicate_notes(prepared_notes)
+    # Prepare all notes
+    # TODO: Replace hardcoded deck name with a constant or config value
 
-        # Print summary
-        if duplicates_count > 0 and added_count > 0:
-            print(
-                f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes."
-            )
-        elif duplicates_count > 0:
-            print(f"No notes added. Skipped {duplicates_count} duplicate notes.")
-        elif added_count > 0:
-            print(f"Added {added_count} notes.")
-        else:
+
+    prepared_notes = []
+    for word in tqdm(selected_words, desc="Preparing notes", unit="note"):
+        try:
+            prepared_note = prepare_note(word) | {"deckName": "VocabularyNew"}
+            prepared_notes.append(prepared_note)
+        except Exception as e:
+            print(f"Error preparing note for {word.expression}: {str(e)}")
+            continue
+
+    # Add non-duplicate notes
+    added_count, duplicates_count = add_non_duplicate_notes(prepared_notes)
+
+    # Print summary
+    if duplicates_count > 0 and added_count > 0:
+        print(
+            f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes."
+        )
+    elif duplicates_count > 0:
+        print(f"No notes added. Skipped {duplicates_count} duplicate notes.")
+    elif added_count > 0:
+        print(f"Added {added_count} notes.")
+    else:
             print("No notes were added.")
 
-    except Exception as e:
-        print("Something went wrong! Dumping words to console:")
-        print([w.expression for w in selected_words].join("\n"))
-        raise Exception(f"Failed to add words to Anki: {str(e)}")
 
 
 

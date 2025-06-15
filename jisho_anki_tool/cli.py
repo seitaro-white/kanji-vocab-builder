@@ -158,11 +158,9 @@ def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
     if not pending_words:
         return
 
-    should_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki before quitting?", default=True)
-    if should_add:
-        click.echo(f"Adding {len(pending_words)} words to Anki...")
-        connect.add_vocab_note_to_deck(pending_words)
-        click.echo("Words successfully added to Anki!")
+    click.echo(f"Adding {len(pending_words)} words to Anki...")
+    connect.add_vocab_note_to_deck(pending_words)
+    click.echo("Words successfully added to Anki!")
 
 
 def handle_next_card() -> Optional[str]:
@@ -196,7 +194,7 @@ def get_user_input(pending_count: int) -> str:
         User input string
     """
     pending_msg = f" ({pending_count} words pending)" if pending_count else ""
-    return click.prompt(f"\nPress 'n' to fetch the current card, input a kanji directly, or 'q' to quit.{pending_msg}")
+    return click.prompt(f"\nPress 'n' to fetch the current card, input a kanji directly, c to commit pending words or 'q' to quit.{pending_msg}")
 
 
 @click.command()
@@ -224,11 +222,21 @@ def jisho_anki():
             elif any(c.isdigit() for c in user_input):
                 pending_words = process_word_selection(displayed_words, pending_words, user_input)
 
+            # Commit pending words to Anki
+            elif user_input.lower() == 'c':
+                click.echo(f"Committing {len(pending_words)} pending words to Anki...")
+                add_pending_words_to_anki(pending_words)
+                pending_words.clear() # I've known python for 5 years and have only just discovered this method!
+
+
             # Quit the program
             elif user_input.lower() == 'q':
-                add_pending_words_to_anki(pending_words)
+                confirm_add = click.confirm(f"You have {len(pending_words)} words pending. Add them to Anki", default=True)
+                if confirm_add:
+                    add_pending_words_to_anki(pending_words)
                 click.echo("Goodbye!")
                 sys.exit(0)
+
 
             # You can also just enter a kanji directly
             elif connect.is_kanji(user_input):
