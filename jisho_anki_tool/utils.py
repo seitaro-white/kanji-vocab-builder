@@ -1,32 +1,7 @@
-import re
 from typing import List
 
-def format_furigana(word: str, reading: str) -> str:
-    """
-    Format a Japanese word with furigana using HTML ruby tags.
 
-    Args:
-        word: The word in kanji/kana
-        reading: The reading in hiragana/katakana
-
-    Returns:
-        If the word contains only kana, returns the word as is.
-        Otherwise, returns the word with ruby annotations.
-    """
-    if not word or not reading:
-        return word or reading or ""
-
-    # Check if word is kana-only (hiragana or katakana)
-    kana_pattern = r'^[ぁ-んァ-ンー]*$'
-    if re.match(kana_pattern, word):
-        return word
-
-    # Use ruby tags to add furigana
-    # This is a simplified implementation that assumes reading aligns with the word
-    # For more complex cases, word and reading would need to be parsed character by character
-    return f'<ruby>{word}<rt>{reading}</rt></ruby>'
-
-def parse_selection(input_str: str) -> List[int]:
+def parse_integer_selection(input_str: str) -> List[int]:
     """
     Parse a space-separated string of integers.
 
@@ -57,3 +32,39 @@ def parse_selection(input_str: str) -> List[int]:
     except Exception:
         # Return an empty list if any unexpected error occurs
         return []
+
+def is_kanji(char: str) -> bool:
+    """
+    Check if a character is a Kanji.
+
+    Args:
+        char: The character to check
+
+    Returns:
+        True if the character is a Kanji, False otherwise
+    """
+    # Unicode ranges for Kanji: CJK Unified Ideographs (4E00-9FFF)
+    if len(char) != 1:
+        return False
+
+    code_point = ord(char)
+    return 0x4E00 <= code_point <= 0x9FFF
+
+def is_kotoba(s: str) -> bool:
+    """
+    Check if a string is a Japanese word composed of Kanji, Hiragana, or Katakana.:
+    """
+    if len(s) < 2:
+        return False
+
+    for c in s:
+        cp = ord(c)
+        # Kanji (4E00–9FFF), Hiragana (3040–309F), Katakana (30A0–30FF)
+        if not (
+            0x4E00 <= cp <= 0x9FFF
+            or 0x3040 <= cp <= 0x309F
+            or 0x30A0 <= cp <= 0x30FF
+        ):
+            return False
+
+    return True
