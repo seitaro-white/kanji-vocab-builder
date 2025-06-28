@@ -159,7 +159,7 @@ def find_kanji_card_id(kanji: str) -> Optional[int]:
 
         if not card_ids:
             return None
-        
+
         # If multiple cards are found (e.g., duplicates), just take the first one.
         return card_ids[0]
 
@@ -179,7 +179,7 @@ def reposition_card_to_top(card_id: int) -> None:
     try:
         # The 'odue' field controls the position in the queue for new/review cards.
         # Setting it to 0 puts it at the very front.
-        send_request("setSpecificValueOfCard", card=card_id, keys=["odue"], values=[0])
+        send_request("setSpecificValueOfCard", card=card_id, keys=["odue"], newValues=[0])
     except Exception as e:
         raise Exception(f"Failed to reposition card {card_id}: {str(e)}")
 
