@@ -142,7 +142,46 @@ def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
     return kanji_list
 
 
+def find_kanji_card_id(kanji: str) -> Optional[int]:
+    """
+    Find the card ID for a given Kanji in the 'All In One Kanji' deck.
 
+    Args:
+        kanji: The Kanji character to search for.
+
+    Returns:
+        The card ID if found, otherwise None.
+    """
+    try:
+        # Search for cards in the specific deck with the Kanji in the "Kanji" field
+        query = f'deck:"All In One Kanji" "Kanji:{kanji}"'
+        card_ids = send_request("findCards", query=query)
+
+        if not card_ids:
+            return None
+        
+        # If multiple cards are found (e.g., duplicates), just take the first one.
+        return card_ids[0]
+
+    except Exception as e:
+        # If there's any error, just return None rather than breaking the app flow
+        print(f"Warning: Failed to find Kanji card for '{kanji}': {str(e)}")
+        return None
+
+
+def reposition_card_to_top(card_id: int) -> None:
+    """
+    Reposition an Anki card to the top of its review queue (odue = 0).
+
+    Args:
+        card_id: The ID of the card to reposition.
+    """
+    try:
+        # The 'odue' field controls the position in the queue for new/review cards.
+        # Setting it to 0 puts it at the very front.
+        send_request("setSpecificValueOfCard", card=card_id, keys=["odue"], values=[0])
+    except Exception as e:
+        raise Exception(f"Failed to reposition card {card_id}: {str(e)}")
 
 
 def prepare_note(word: JishoWord) -> Dict[str, Any]:

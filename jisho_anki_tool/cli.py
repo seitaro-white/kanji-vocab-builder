@@ -12,6 +12,7 @@ from jisho_anki_tool.jisho import JishoWord
 
 from jamdict import Jamdict
 from jisho_anki_tool.render import console, info, success, error
+from rich.text import Text # Import Text for escaping strings
 
 
 # Initialize Jamdict for word lookups
@@ -156,6 +157,42 @@ def get_user_input(pending_count: int) -> str:
     return console.input(f"{pending}[bold green]> [/bold green]")
 
 
+def prompt_and_reposition_kanji(kanji: str) -> bool:
+    """
+    Prompts the user to reposition a Kanji card and performs the action if confirmed.
+
+    Args:
+        kanji: The Kanji character to reposition.
+
+    Returns:
+        True if the card was repositioned, False otherwise.
+    """
+    confirm_reposition = click.confirm(
+        f"Do you want to reposition the Kanji card for '{kanji}' to the top of its deck?",
+        default=False, # Default to No, as this is an optional action
+    )
+
+    if confirm_reposition:
+        with console.status(f"[bold]Repositioning Kanji card for '{kanji}'…[/bold]", spinner="dots"):
+            try:
+                card_id = ankiconnect.find_kanji_card_id(kanji)
+                if card_id:
+                    ankiconnect.reposition_card_to_top(card_id)
+                    success(f"Kanji card for '{kanji}' repositioned to top.")
+                    return True
+                else:
+                    # Escape the kanji before passing it to error
+                    escaped_kanji = Text(kanji).escape()
+                    error(f"Could not find Kanji card for '{escaped_kanji}' in Anki.")
+                    return False
+            except Exception as e:
+                # Escape the exception message
+                escaped_error_msg = Text(str(e)).escape()
+                error(f"Failed to reposition Kanji card: {escaped_error_msg}")
+                return False
+    return False
+
+
 @click.command()
 def jisho_anki():
     """
@@ -176,6 +213,7 @@ def jisho_anki():
             if user_input.lower() == "n":
                 kanji = handle_next_card()
                 if kanji:
+                    prompt_and_reposition_kanji(kanji)
                     displayed_words = fetch_words_from_kanji(kanji)
 
             # Select words to add to pending list
@@ -203,8 +241,10 @@ def jisho_anki():
 
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
-                with console.status(f"Searching for words containing [yellow2]{user_input}[/yellow2]…", spinner="dots"):
-                    displayed_words = fetch_words_from_kanji(user_input)
+                kanji = user_input
+                prompt_and_reposition_kanji(kanji)
+                with console.status(f"Searching for words containing [yellow2]{kanji}[/yellow2]…", spinner="dots"):
+                    displayed_words = fetch_words_from_kanji(kanji)
 
             # Or look up a single word
             elif is_kotoba(user_input):
