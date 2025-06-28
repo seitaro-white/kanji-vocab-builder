@@ -115,8 +115,8 @@ def info(msg: str) -> None:
 
 
 def success(msg: str) -> None:
-    console.print(f"[bold green]O[/bold green]  [/green]{msg}[/green]")
+    console.print(f"[bold green]O[/bold green] {msg}")
 
 
 def error(msg: str) -> None:
-    console.print(f"[bold red]X[/bold red]  [/red]{msg}[/red]")
+    console.print(f"[bold red]X[/bold red] {msg}")
