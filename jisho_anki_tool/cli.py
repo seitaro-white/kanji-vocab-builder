@@ -179,15 +179,15 @@ def prompt_and_reposition_kanji(kanji: str) -> bool:
                 if card_id:
                     ankiconnect.reposition_card_to_top(card_id)
                     success(f"Kanji card for '{kanji}' repositioned to top.")
+
                     return True
                 else:
                     # Escape the kanji before passing it to error
-                    escaped_kanji = Text(kanji).escape()
-                    error(f"Could not find Kanji card for '{escaped_kanji}' in Anki.")
+                    error(f"Could not find Kanji card for '{kanji}' in Anki.")
                     return False
             except Exception as e:
                 # Escape the exception message
-                escaped_error_msg = Text(str(e)).escape()
+                escaped_error_msg = (str(e))
                 error(f"Failed to reposition Kanji card: {escaped_error_msg}")
                 return False
     return False
@@ -213,7 +213,6 @@ def jisho_anki():
             if user_input.lower() == "n":
                 kanji = handle_next_card()
                 if kanji:
-                    prompt_and_reposition_kanji(kanji)
                     displayed_words = fetch_words_from_kanji(kanji)
 
             # Select words to add to pending list
@@ -242,9 +241,10 @@ def jisho_anki():
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
                 kanji = user_input
-                prompt_and_reposition_kanji(kanji)
                 with console.status(f"Searching for words containing [yellow2]{kanji}[/yellow2]…", spinner="dots"):
                     displayed_words = fetch_words_from_kanji(kanji)
+
+                prompt_and_reposition_kanji(kanji)
 
             # Or look up a single word
             elif is_kotoba(user_input):
