@@ -9,7 +9,7 @@ from rich.text import Text
 from rich.rule import Rule
 
 from jisho_anki_tool.anki import connect
-from jisho_anki_tool.jisho import JishoWord
+from jisho_anki_tool.jisho import JishoWord, KanjiSummary
 
 from jamdict.jmdict import JMDEntry
 
@@ -28,6 +28,35 @@ def welcome_message() -> None:
     console.print(
         "[dim]山[/dim]: Search Kanji   •  [dim]火山[/dim]: Search Word  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
     )
+
+
+def kanji_summary(summary: KanjiSummary) -> None:
+    """Render a short summary panel for the current kanji."""
+    jlpt_label = f"N{summary.jlpt}" if summary.jlpt else "—"
+    readings_lines = []
+    if summary.kun_readings:
+        readings_lines.append(("Kun", "、".join(summary.kun_readings)))
+    if summary.on_readings:
+        readings_lines.append(("On", "、".join(summary.on_readings)))
+
+    table = Table.grid(expand=True)
+    table.add_column(justify="left", style="bold chartreuse3", no_wrap=True)
+    table.add_column()
+
+    table.add_row("JLPT", jlpt_label)
+    for label, reading in readings_lines:
+        table.add_row(label, reading)
+    meanings_text = "; ".join(summary.meanings[:3]) or "—"
+    table.add_row("Meaning", meanings_text)
+
+
+    panel = Panel(
+        table,
+        title=f"[bold yellow]{summary.kanji}[/bold yellow]",
+        border_style="bright_blue",
+    )
+    console.print(panel)
+
 
 
 def words_table(

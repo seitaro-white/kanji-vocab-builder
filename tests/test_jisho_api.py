@@ -102,3 +102,40 @@ def test_fetch_jisho_word_furigana(word, expected):
 def test_is_kanji(character, expected):
     """Test that is_kanji correctly identifies kanji characters."""
     assert jisho.is_kanji(character) == expected
+
+
+def test_parse_kanji_summary_from_html():
+    html = """
+    <div class="kanji details">
+        <div class="kanji-details__main-meanings">mountain, hill</div>
+        <div class="kanji-details__main-readings">
+            <dl class="dictionary_entry kun_yomi">
+                <dt>Kun:</dt>
+                <dd class="kanji-details__main-readings-list" lang="ja">
+                    <a href="//jisho.org/search/%E5%B1%B1%20%E3%82%84%E3%81%BE">やま</a>
+                </dd>
+            </dl>
+            <dl class="dictionary_entry on_yomi">
+                <dt>On:</dt>
+                <dd class="kanji-details__main-readings-list" lang="ja">
+                    <a href="//jisho.org/search/%E5%B1%B1%20%E3%81%95%E3%82%93">サン</a>
+                    、
+                    <a href="//jisho.org/search/%E5%B1%B1%20%E3%81%9B%E3%82%93">セン</a>
+                </dd>
+            </dl>
+        </div>
+        <div class="kanji_stats">
+            <div class="stat jlpt">
+                <strong>N5</strong>
+            </div>
+        </div>
+    </div>
+    """
+
+    summary = jisho._parse_kanji_summary_from_html("山", html)
+    assert summary is not None
+    assert summary.kanji == "山"
+    assert summary.meanings == ["mountain", "hill"]
+    assert summary.kun_readings == ["やま"]
+    assert summary.on_readings == ["サン", "セン"]
+    assert summary.jlpt == 5

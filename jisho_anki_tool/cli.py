@@ -29,11 +29,15 @@ def fetch_words_from_kanji(kanji: str) -> List[JishoWord]:
         List of sorted words that were displayed to the user
     """
 
-    # Fetch any words containing Kanji from Jisho
+    kanji_summary = jisho.fetch_kanji_summary(kanji)
+
     words: List[JishoWord] = jisho.search_words_containing_kanji(kanji)
     if not words:
         click.echo("No words found containing this Kanji.")
         return []
+
+    if kanji_summary:
+        render.kanji_summary(kanji_summary)
 
     # Get list of already reviewed words from Anki
     reviewed_vocab = ankiconnect.get_reviewed_vocab()
