@@ -12,5 +12,5 @@ url = "http://localhost:8765"
 
 [kanji_deck]
 # Name of the Anki deck containing kanji cards
-# Default assumes "All In One Kanji" deck from AnkiWeb
-name = "All In One Kanji"
+# Default assumes "All in One Kanji" deck from AnkiWeb
+name = "All in One Kanji"

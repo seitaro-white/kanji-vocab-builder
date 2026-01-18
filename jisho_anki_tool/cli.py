@@ -197,14 +197,41 @@ def prompt_and_reposition_kanji(kanji: str) -> bool:
     return False
 
 
-@click.command()
-def jisho_anki():
+@click.group(invoke_without_command=True)
+@click.pass_context
+def jisho_anki(ctx):
     """
     CLI tool to fetch Kanji cards from Anki, search for words on Jisho,
     and add selected words back to Anki.
     """
+    # If no subcommand is provided, run the interactive mode
+    if ctx.invoked_subcommand is None:
+        run_interactive()
 
+
+@jisho_anki.command()
+def setup():
+    """Initialize vocabulary deck and note type in Anki."""
+    from jisho_anki_tool.setup import run_setup
+
+    success = run_setup()
+    sys.exit(0 if success else 1)
+
+
+def run_interactive():
+    """Run the interactive word selection loop."""
     render.welcome_message()
+
+    # Validate prerequisites before starting
+    from jisho_anki_tool.setup import validate_prerequisites
+
+    is_valid, errors = validate_prerequisites()
+    if not is_valid:
+        console.print("[bold red]Cannot start - missing prerequisites:[/bold red]\n")
+        for error in errors:
+            console.print(error)
+            console.print()  # Empty line between errors
+        sys.exit(1)
 
     displayed_words = []  # Store the last displayed word list
     pending_words = []  # Store selected words to add to Anki later

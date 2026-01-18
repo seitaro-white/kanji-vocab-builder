@@ -17,7 +17,7 @@ class AnkiConnectConfig(BaseModel):
 class KanjiDeckConfig(BaseModel):
     """Configuration for kanji deck."""
 
-    name: str = "All In One Kanji"
+    name: str = "All in One Kanji"
 
 
 class AppConfig(BaseSettings):

@@ -7,11 +7,31 @@ import re
 from jisho_anki_tool.utils import is_kanji
 from jisho_anki_tool.anki.schemas import KanjiCard
 from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
+from jisho_anki_tool.config import (
+    load_config,
+    VOCAB_DECK_NAME,
+    VOCAB_NOTE_TYPE,
+    VOCAB_TAG,
+    FIELDS,
+)
 
 from tqdm import tqdm
 
-# Base URL for AnkiConnect
-ANKI_CONNECT_URL = "http://localhost:8765"
+# Lazy-loaded configuration
+_config = None
+
+
+def get_config():
+    """Get or load the application configuration."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+
+def get_anki_url() -> str:
+    """Get the AnkiConnect URL from configuration."""
+    return get_config().ankiconnect.url
 
 
 # Low Level
@@ -32,7 +52,7 @@ def send_request(action: str, **params) -> Any:
     payload = {"action": action, "version": 6, "params": params}
 
     try:
-        response = requests.post(ANKI_CONNECT_URL, json=payload)
+        response = requests.post(get_anki_url(), json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -144,7 +164,7 @@ def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
 
 def find_kanji_card_id(kanji: str) -> Optional[int]:
     """
-    Find the card ID for a given Kanji in the 'All In One Kanji' deck.
+    Find the card ID for a given Kanji in the configured kanji deck.
 
     Args:
         kanji: The Kanji character to search for.
@@ -154,7 +174,8 @@ def find_kanji_card_id(kanji: str) -> Optional[int]:
     """
     try:
         # Search for cards in the specific deck with the Kanji in the "Kanji" field
-        query = f'deck:"All In One Kanji" "Kanji:{kanji}"'
+        kanji_deck = get_config().kanji_deck.name
+        query = f'deck:"{kanji_deck}" "Kanji:{kanji}"'
         card_ids = send_request("findCards", query=query)
 
         if not card_ids:
@@ -193,29 +214,29 @@ def prepare_note(word: JishoWord) -> Dict[str, Any]:
     # Format the back with first definition
     back = word.definitions[0]
 
-    # Create note
+    # Create note using configured constants
     return {
-        "modelName": "MyJapaneseVocabulary",
+        "modelName": VOCAB_NOTE_TYPE,
         "fields": {
-            "Front": front,
-            "Back": back,
-            "Expression": word.expression,
-            "Kana Reading": word.kana,
-            "Grammar": word.parts_of_speech[0],
-            "Definition": word.definitions[0],
-            "Additional Definitions": "\n".join(word.definitions[1:]),
-            "JLPT": f"JLPT N{word.jlpt}",
+            FIELDS["front"]: front,
+            FIELDS["back"]: back,
+            FIELDS["expression"]: word.expression,
+            FIELDS["kana_reading"]: word.kana,
+            FIELDS["grammar"]: word.parts_of_speech[0] if word.parts_of_speech else "",
+            FIELDS["definition"]: word.definitions[0],
+            FIELDS["additional_definitions"]: "\n".join(word.definitions[1:]),
+            FIELDS["jlpt"]: f"JLPT N{word.jlpt}" if word.jlpt else "",
         },
-        "tags": ["jisho-anki-tool v2"],
+        "tags": [VOCAB_TAG],
         "options": {"allowDuplicate": False},
     }
 
 
 def add_vocab_note_to_deck(
-    selected_words: List[JishoWord], deckname: str = "VocabularyNew"
+    selected_words: List[JishoWord], deckname: str = None
 ) -> None:
     """
-    Add selected words to the 'VocabularyNew' Anki deck.
+    Add selected words to the vocabulary Anki deck.
     Handles duplicate notes by skipping them and continuing with others.
 
     Args:
@@ -226,6 +247,9 @@ def add_vocab_note_to_deck(
     """
     if not selected_words:
         return
+
+    # Use VOCAB_DECK_NAME if deckname not specified
+    deck = deckname if deckname is not None else VOCAB_DECK_NAME
 
     def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
         """
@@ -256,12 +280,10 @@ def add_vocab_note_to_deck(
         return len(notes_to_add), duplicates_count
 
     # Prepare all notes
-    # TODO: Replace hardcoded deck name with a constant or config value
-
     prepared_notes = []
     for word in tqdm(selected_words, desc="Preparing notes", unit="note"):
         try:
-            prepared_note = prepare_note(word) | {"deckName": "VocabularyNew"}
+            prepared_note = prepare_note(word) | {"deckName": deck}
             prepared_notes.append(prepared_note)
         except Exception as e:
             print(f"Error preparing note for {word.expression}: {str(e)}")
@@ -283,7 +305,7 @@ def add_vocab_note_to_deck(
 
 def get_reviewed_kanji() -> Set[str]:
     """
-    Get the set of Kanji that have been reviewed in the 'All in one Kanji' deck.
+    Get the set of Kanji that have been reviewed in the configured kanji deck.
 
     Returns:
         A set of reviewed Kanji characters
@@ -296,9 +318,9 @@ def get_reviewed_kanji() -> Set[str]:
     try:
         # Get card IDs of reviewed cards in the Kanji deck
         # TODO: Remove the flag bit from this later as this is really just for me!
-        # TODO: Replace the deckname with a constant or config value
+        kanji_deck = get_config().kanji_deck.name
         card_ids = send_request(
-            "findCards", query='deck:"All In One Kanji" (-is:new OR flag:1)'
+            "findCards", query=f'deck:"{kanji_deck}" (-is:new OR flag:1)'
         )
 
         if not card_ids:
@@ -322,7 +344,7 @@ def get_reviewed_kanji() -> Set[str]:
 
 def get_reviewed_vocab() -> List[str]:
     """
-    Get a list of reviewed words from the 'VocabularyNew' deck.
+    Get a list of reviewed words from the vocabulary deck.
     Extracts the main word from the 'Front' field, typically from <ruby> tags.
 
     Returns:
@@ -330,9 +352,9 @@ def get_reviewed_vocab() -> List[str]:
     """
     reviewed_vocab: List[str] = []
     try:
-        # Find card IDs of reviewed cards in the 'VocabularyNew' deck
+        # Find card IDs of reviewed cards in the vocabulary deck
         # Reviewed cards are those that are not new.
-        card_ids = send_request("findCards", query="deck:VocabularyNew")
+        card_ids = send_request("findCards", query=f"deck:{VOCAB_DECK_NAME}")
 
         # Get card info for each card
         cards_info = send_request("cardsInfo", cards=card_ids)
