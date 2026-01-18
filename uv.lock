@@ -374,9 +374,9 @@ wheels = [
 ]
 
 [[package]]
-name = "kanji-vocab-builder"
+name = "kanji-vocab-miner"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "bs4" },
     { name = "click" },

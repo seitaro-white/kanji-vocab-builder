@@ -3,15 +3,15 @@ from typing import List, Optional
 
 import click
 
-from jisho_anki_tool.anki import connect as ankiconnect
+from kanji_vocab_miner.anki import connect as ankiconnect
 
-from jisho_anki_tool import card_processor, jisho, render
-from jisho_anki_tool.utils import parse_integer_selection, is_kanji, is_kotoba
-from jisho_anki_tool.anki.schemas import KanjiCard
-from jisho_anki_tool.jisho import JishoWord
+from kanji_vocab_miner import card_processor, jisho, render
+from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
+from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.jisho import JishoWord
 
 from jamdict import Jamdict
-from jisho_anki_tool.render import console, info, success, error
+from kanji_vocab_miner.render import console, info, success, error
 from rich.text import Text # Import Text for escaping strings
 
 
@@ -212,7 +212,7 @@ def jisho_anki(ctx):
 @jisho_anki.command()
 def setup():
     """Initialize vocabulary deck and note type in Anki."""
-    from jisho_anki_tool.setup import run_setup
+    from kanji_vocab_miner.setup import run_setup
 
     success = run_setup()
     sys.exit(0 if success else 1)
@@ -223,7 +223,7 @@ def run_interactive():
     render.welcome_message()
 
     # Validate prerequisites before starting
-    from jisho_anki_tool.setup import validate_prerequisites
+    from kanji_vocab_miner.setup import validate_prerequisites
 
     is_valid, errors = validate_prerequisites()
     if not is_valid:

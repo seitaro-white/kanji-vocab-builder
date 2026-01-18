@@ -1,9 +1,25 @@
 [project]
-name = "kanji-vocab-builder"
+name = "kanji-vocab-miner"
 version = "0.1.0"
-description = "Add your description here"
+description = "CLI tool for mining Japanese vocabulary in Anki using kanji from your deck and word lookups from Jisho"
+authors = [
+    {name = "Joseph White", email = "joseph@example.com"}
+]
+license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.12"
+keywords = ["anki", "japanese", "kanji", "vocabulary", "jisho", "learning", "srs", "language-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Natural Language :: Japanese",
+    "Environment :: Console",
+]
 dependencies = [
     "bs4>=0.0.2",
     "click==8.1.7",
@@ -20,5 +36,17 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/yourusername/kanji-vocab-miner"
+Repository = "https://github.com/yourusername/kanji-vocab-miner"
+Issues = "https://github.com/yourusername/kanji-vocab-miner/issues"
+
 [project.scripts]
-jisho-anki = "jisho_anki_tool.cli:jisho_anki"
+kanji-vocab-miner = "kanji_vocab_miner.cli:jisho_anki"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kanji_vocab_miner"]

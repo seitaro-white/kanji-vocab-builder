@@ -3,7 +3,7 @@ import requests
 import json
 import jsonschema
 import os
-from jisho_anki_tool import jisho
+from kanji_vocab_miner import jisho
 
 from typing import List
 

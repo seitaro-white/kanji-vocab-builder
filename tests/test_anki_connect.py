@@ -1,9 +1,9 @@
 import pytest
 import requests
 
-from jisho_anki_tool.anki import connect
-from jisho_anki_tool.anki.schemas import KanjiCard
-from jisho_anki_tool.jisho import JishoWord # Added import
+from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.jisho import JishoWord # Added import
 
 def test_ping_anki():
     """
@@ -133,18 +133,18 @@ def test_prepare_note():
 
     # Define expected output, assuming fetch_jisho_word_furigana("日本語") -> "日[に]本[ほん]語[ご]"
     expected_note_full = {
-        "modelName": "MyJapaneseVocabulary",
+        "modelName": "KanjiVocabMiner-Vocab",
         "fields": {
             "Front": "日本語[にほんご]", # Hardcoded expected furigana
             "Back": "Japanese language",
             "Expression": "日本語",
             "Kana Reading": "にほんご",
             "Grammar": "Noun",
-            "Primary Definition": "Japanese language",
+            "Definition": "Japanese language",
             "Additional Definitions": "The spoken and written language of Japan.",
             "JLPT": "JLPT N3",
         },
-        "tags": ["jisho-anki-tool v2"],
+        "tags": ["kanji-vocab-miner"],
         "options": {"allowDuplicate": False},
     }
     assert prepared_note_full == expected_note_full
@@ -161,18 +161,18 @@ def test_prepare_note():
 
     # Define expected output, assuming fetch_jisho_word_furigana("学ぶ") -> "学[まな]ぶ "
     expected_note_minimal = {
-        "modelName": "MyJapaneseVocabulary",
+        "modelName": "KanjiVocabMiner-Vocab",
         "fields": {
             "Front": "学[まな]ぶ ", # Hardcoded expected furigana
             "Back": "to learn",
             "Expression": "学ぶ",
             "Kana Reading": "まなぶ",
             "Grammar": "Verb",
-            "Primary Definition": "to learn",
+            "Definition": "to learn",
             "Additional Definitions": "",  # Expect empty string if only one definition
             "JLPT": "JLPT N4",
         },
-        "tags": ["jisho-anki-tool v2"],
+        "tags": ["kanji-vocab-miner"],
         "options": {"allowDuplicate": False},
     }
     assert prepared_note_minimal == expected_note_minimal

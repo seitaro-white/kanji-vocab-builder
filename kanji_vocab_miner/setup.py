@@ -2,13 +2,13 @@
 
 from typing import Tuple, List
 
-from jisho_anki_tool.anki import connect
-from jisho_anki_tool.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE, FIELDS, load_config
-from jisho_anki_tool.render import console
+from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE, FIELDS, load_config
+from kanji_vocab_miner.render import console
 
 
 def validate_prerequisites() -> Tuple[bool, List[str]]:
-    """Validate all prerequisites for running jisho-anki.
+    """Validate all prerequisites for running kanji-vocab-miner.
 
     Checks:
     1. AnkiConnect connectivity
@@ -42,7 +42,7 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
         if VOCAB_DECK_NAME not in deck_names:
             errors.append(
                 f"[red]✗ Vocabulary deck '{VOCAB_DECK_NAME}' not found[/red]\n"
-                f"  Run: [bold cyan]jisho-anki setup[/bold cyan] to create it"
+                f"  Run: [bold cyan]kanji-vocab-miner setup[/bold cyan] to create it"
             )
     except Exception:
         errors.append("[red]✗ Failed to check for vocabulary deck[/red]")
@@ -53,7 +53,7 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
         if VOCAB_NOTE_TYPE not in model_names:
             errors.append(
                 f"[red]✗ Note type '{VOCAB_NOTE_TYPE}' not found[/red]\n"
-                f"  Run: [bold cyan]jisho-anki setup[/bold cyan] to create it"
+                f"  Run: [bold cyan]kanji-vocab-miner setup[/bold cyan] to create it"
             )
     except Exception:
         errors.append("[red]✗ Failed to check for note type[/red]")
@@ -66,7 +66,7 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
                 f"[red]✗ Kanji deck '{kanji_deck_name}' not found[/red]\n"
                 f"  This deck is required for the tool to work.\n"
                 f"  Download from: https://ankiweb.net/shared/info/1862058740\n"
-                f"  Or configure a different kanji deck in: ~/.config/jisho-anki/config.toml"
+                f"  Or configure a different kanji deck in: ~/.config/kanji-vocab-miner/config.toml"
             )
     except Exception:
         errors.append("[red]✗ Failed to check for kanji deck[/red]")
@@ -85,7 +85,7 @@ def run_setup():
     Returns:
         bool: True if setup completed successfully, False otherwise
     """
-    console.print("[bold]Jisho-Anki Setup[/bold]\n")
+    console.print("[bold]Kanji Vocab Miner Setup[/bold]\n")
 
     # 1. Test AnkiConnect
     console.print("[cyan]Testing AnkiConnect connection...[/cyan]")
@@ -149,11 +149,11 @@ def run_setup():
             "[yellow]⚠ Important:[/yellow] You also need the kanji deck to use this tool.\n"
             f"  The tool expects: [bold]{kanji_deck_name}[/bold]\n"
             "  Download from: https://ankiweb.net/shared/info/1862058740\n"
-            "  Import it into Anki before running [bold cyan]jisho-anki[/bold cyan]\n"
+            "  Import it into Anki before running [bold cyan]kanji-vocab-miner[/bold cyan]\n"
         )
     else:
         console.print(
-            "You can now run [bold cyan]jisho-anki[/bold cyan] to start using the tool.\n"
+            "You can now run [bold cyan]kanji-vocab-miner[/bold cyan] to start using the tool.\n"
         )
 
     return True

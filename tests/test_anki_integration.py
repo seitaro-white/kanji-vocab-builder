@@ -9,13 +9,13 @@ These are real integration tests that interact with Anki.
 """
 
 import pytest
-from jisho_anki_tool.anki import connect
-from jisho_anki_tool.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE, FIELDS
+from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE, FIELDS
 
 
 # Test deck/note type names (use unique names to avoid conflicts)
-TEST_DECK_NAME = "JishoAnki-TestDeck-DELETE-ME"
-TEST_NOTE_TYPE = "JishoAnki-TestNoteType-DELETE-ME"
+TEST_DECK_NAME = "KanjiVocabMiner-TestDeck-DELETE-ME"
+TEST_NOTE_TYPE = "KanjiVocabMiner-TestNoteType-DELETE-ME"
 
 
 @pytest.fixture(scope="module")
@@ -183,6 +183,6 @@ def test_prevent_deck_overwrite(anki_connection, cleanup_test_deck):
 def test_vocab_deck_and_note_type_constants():
     """Test that our vocab deck constants are defined."""
     # These constants are used by the setup command
-    assert VOCAB_DECK_NAME == "JishoAnki-Vocabulary"
-    assert VOCAB_NOTE_TYPE == "JishoAnki-Vocab"
+    assert VOCAB_DECK_NAME == "KanjiVocabMiner-Vocabulary"
+    assert VOCAB_NOTE_TYPE == "KanjiVocabMiner-Vocab"
     assert len(FIELDS) == 8

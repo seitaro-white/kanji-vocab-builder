@@ -1,4 +1,4 @@
-"""Configuration management for jisho-anki-tool."""
+"""Configuration management for kanji-vocab-miner."""
 
 from pathlib import Path
 from typing import Optional
@@ -24,7 +24,7 @@ class AppConfig(BaseSettings):
     """Application configuration with environment variable support."""
 
     model_config = SettingsConfigDict(
-        env_prefix="JISHO_ANKI_", env_nested_delimiter="__"
+        env_prefix="KANJI_VOCAB_MINER_", env_nested_delimiter="__"
     )
 
     ankiconnect: AnkiConnectConfig = Field(default_factory=AnkiConnectConfig)
@@ -32,9 +32,9 @@ class AppConfig(BaseSettings):
 
 
 # Hardcoded vocabulary deck settings (created via setup command)
-VOCAB_DECK_NAME = "JishoAnki-Vocabulary"
-VOCAB_NOTE_TYPE = "JishoAnki-Vocab"
-VOCAB_TAG = "jisho-anki"
+VOCAB_DECK_NAME = "KanjiVocabMiner-Vocabulary"
+VOCAB_NOTE_TYPE = "KanjiVocabMiner-Vocab"
+VOCAB_TAG = "kanji-vocab-miner"
 
 # Hardcoded field names (note type created with these fields)
 FIELDS = {
@@ -53,13 +53,13 @@ def get_config_path() -> Path:
     """Return XDG-compliant config file path.
 
     Checks for config in order:
-    1. ~/.config/jisho-anki/config.toml (XDG base directory)
-    2. ~/.jisho-anki.toml (fallback)
+    1. ~/.config/kanji-vocab-miner/config.toml (XDG base directory)
+    2. ~/.kanji-vocab-miner.toml (fallback)
 
     Returns the first existing path, or the XDG path if neither exists.
     """
-    xdg_config = Path.home() / ".config" / "jisho-anki" / "config.toml"
-    home_config = Path.home() / ".jisho-anki.toml"
+    xdg_config = Path.home() / ".config" / "kanji-vocab-miner" / "config.toml"
+    home_config = Path.home() / ".kanji-vocab-miner.toml"
 
     if xdg_config.exists():
         return xdg_config
@@ -74,7 +74,7 @@ def load_config() -> AppConfig:
 
     Loads config from TOML file at get_config_path() if it exists.
     Falls back to default values if no config file is found.
-    Environment variables with JISHO_ANKI_ prefix override all settings.
+    Environment variables with KANJI_VOCAB_MINER_ prefix override all settings.
 
     Returns:
         AppConfig instance with loaded or default configuration

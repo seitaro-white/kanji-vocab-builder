@@ -1,10 +1,10 @@
-# Jisho-Anki Tool Configuration
+# Kanji Vocab Miner Configuration
 #
-# Copy this file to ~/.config/jisho-anki/config.toml to customize settings.
+# Copy this file to ~/.config/kanji-vocab-miner/config.toml to customize settings.
 # All settings are optional - the tool will use these defaults if not specified.
 #
 # Note: The vocabulary deck and note type are created automatically by the
-# 'jisho-anki setup' command and do not need to be configured.
+# 'kanji-vocab-miner setup' command and do not need to be configured.
 
 [ankiconnect]
 # AnkiConnect URL (requires Anki running with AnkiConnect plugin)

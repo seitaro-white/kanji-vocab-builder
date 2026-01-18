@@ -4,10 +4,10 @@ from typing import List, Dict, Set, Any, Optional, Tuple
 import re
 
 # Update import to avoid circular dependency
-from jisho_anki_tool.utils import is_kanji
-from jisho_anki_tool.anki.schemas import KanjiCard
-from jisho_anki_tool.jisho import JishoWord, fetch_jisho_word_furigana
-from jisho_anki_tool.config import (
+from kanji_vocab_miner.utils import is_kanji
+from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
+from kanji_vocab_miner.config import (
     load_config,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,

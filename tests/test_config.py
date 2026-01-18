@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from jisho_anki_tool.config import (
+from kanji_vocab_miner.config import (
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
     VOCAB_TAG,
@@ -14,13 +14,13 @@ from jisho_anki_tool.config import (
 
 def test_load_config_defaults():
     """Test that config loads with sensible defaults when no file exists."""
-    with patch("jisho_anki_tool.config.get_config_path") as mock_path:
+    with patch("kanji_vocab_miner.config.get_config_path") as mock_path:
         mock_path.return_value = Path("/nonexistent/config.toml")
         config = load_config()
 
         # Verify we got a config object with defaults
         assert config.ankiconnect.url == "http://localhost:8765"
-        assert config.kanji_deck.name == "All In One Kanji"
+        assert config.kanji_deck.name == "All in One Kanji"
 
 
 def test_load_config_from_file(tmp_path):
@@ -35,7 +35,7 @@ def test_load_config_from_file(tmp_path):
         """
     config_file.write_text(config_content)
 
-    with patch("jisho_anki_tool.config.get_config_path") as mock_path:
+    with patch("kanji_vocab_miner.config.get_config_path") as mock_path:
         mock_path.return_value = config_file
         config = load_config()
 
@@ -46,7 +46,7 @@ def test_load_config_from_file(tmp_path):
 def test_vocab_constants_defined():
     """Test that hardcoded vocab constants are defined."""
     # These are created by the setup command, not configurable
-    assert VOCAB_DECK_NAME == "JishoAnki-Vocabulary"
-    assert VOCAB_NOTE_TYPE == "JishoAnki-Vocab"
-    assert VOCAB_TAG == "jisho-anki"
+    assert VOCAB_DECK_NAME == "KanjiVocabMiner-Vocabulary"
+    assert VOCAB_NOTE_TYPE == "KanjiVocabMiner-Vocab"
+    assert VOCAB_TAG == "kanji-vocab-miner"
     assert len(FIELDS) == 8  # Should have 8 fields

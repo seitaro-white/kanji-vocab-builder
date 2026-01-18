@@ -1,6 +1,6 @@
 import pytest
-from jisho_anki_tool import card_processor
-from jisho_anki_tool.jisho import JishoWord
+from kanji_vocab_miner import card_processor
+from kanji_vocab_miner.jisho import JishoWord
 
 
 @pytest.fixture

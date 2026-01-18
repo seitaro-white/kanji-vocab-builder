@@ -8,8 +8,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule
 
-from jisho_anki_tool.anki import connect
-from jisho_anki_tool.jisho import JishoWord, KanjiSummary
+from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 
 from jamdict.jmdict import JMDEntry
 
