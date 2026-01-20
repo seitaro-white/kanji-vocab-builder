@@ -362,7 +362,9 @@ def get_reviewed_vocab() -> List[str]:
         reviewed_vocab = [
             i["fields"]["Expression"]["value"]
             for i in cards_info
-            if "Expression" in i["fields"]
+            if "Expression" in i["fields"] and
+            # Added this in to deal with my mess of old cards that don't match the current format!
+            i["fields"]["Expression"]["value"].strip() != ""
         ]
 
         return reviewed_vocab

@@ -133,7 +133,7 @@ def test_prepare_note():
 
     # Define expected output, assuming fetch_jisho_word_furigana("日本語") -> "日[に]本[ほん]語[ご]"
     expected_note_full = {
-        "modelName": "KanjiVocabMiner-Vocab",
+        "modelName": "MyJapaneseVocabulary",
         "fields": {
             "Front": "日本語[にほんご]", # Hardcoded expected furigana
             "Back": "Japanese language",
@@ -161,7 +161,7 @@ def test_prepare_note():
 
     # Define expected output, assuming fetch_jisho_word_furigana("学ぶ") -> "学[まな]ぶ "
     expected_note_minimal = {
-        "modelName": "KanjiVocabMiner-Vocab",
+        "modelName": "MyJapaneseVocabulary",
         "fields": {
             "Front": "学[まな]ぶ ", # Hardcoded expected furigana
             "Back": "to learn",

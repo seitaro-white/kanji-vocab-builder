@@ -33,7 +33,7 @@ class AppConfig(BaseSettings):
 
 # Hardcoded vocabulary deck settings (created via setup command)
 VOCAB_DECK_NAME = "KanjiVocabMiner-Vocabulary"
-VOCAB_NOTE_TYPE = "KanjiVocabMiner-Vocab"
+VOCAB_NOTE_TYPE = "MyJapaneseVocabulary"
 VOCAB_TAG = "kanji-vocab-miner"
 
 # Hardcoded field names (note type created with these fields)

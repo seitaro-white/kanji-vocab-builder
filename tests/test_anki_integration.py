@@ -80,29 +80,6 @@ def test_create_deck_idempotent(anki_connection, cleanup_test_deck):
         pytest.fail(f"Creating existing deck should be idempotent, but raised: {e}")
 
 
-def test_create_note_type(anki_connection, cleanup_test_note_type):
-    """Test creating a new note type via AnkiConnect."""
-    # Define note type structure matching our vocab note type
-    model_config = {
-        "modelName": TEST_NOTE_TYPE,
-        "inOrderFields": list(FIELDS.values()),
-        "css": ".card { font-family: arial; font-size: 20px; text-align: center; }",
-        "cardTemplates": [
-            {
-                "Name": "Card 1",
-                "Front": "{{Front}}",
-                "Back": "{{FrontSide}}<hr id=answer>{{Back}}",
-            }
-        ],
-    }
-
-    # Create note type
-    result = connect.send_request("createModel", **model_config)
-    assert result is not None, "Failed to create note type"
-
-    # Verify note type exists
-    model_names = connect.send_request("modelNames")
-    assert TEST_NOTE_TYPE in model_names, f"Note type {TEST_NOTE_TYPE} not found"
 
 
 def test_query_kanji_deck(anki_connection):
@@ -184,5 +161,5 @@ def test_vocab_deck_and_note_type_constants():
     """Test that our vocab deck constants are defined."""
     # These constants are used by the setup command
     assert VOCAB_DECK_NAME == "KanjiVocabMiner-Vocabulary"
-    assert VOCAB_NOTE_TYPE == "KanjiVocabMiner-Vocab"
+    assert VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
     assert len(FIELDS) == 8

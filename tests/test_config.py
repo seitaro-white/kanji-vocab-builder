@@ -47,6 +47,6 @@ def test_vocab_constants_defined():
     """Test that hardcoded vocab constants are defined."""
     # These are created by the setup command, not configurable
     assert VOCAB_DECK_NAME == "KanjiVocabMiner-Vocabulary"
-    assert VOCAB_NOTE_TYPE == "KanjiVocabMiner-Vocab"
+    assert VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
     assert VOCAB_TAG == "kanji-vocab-miner"
     assert len(FIELDS) == 8  # Should have 8 fields
