@@ -126,8 +126,14 @@ def run_setup():
         error_msg = str(e).lower()
         if "already exists" in error_msg or "model name already exists" in error_msg:
             console.print(
-                f"[yellow]→[/yellow] Note type '{VOCAB_NOTE_TYPE}' already exists\n"
+                f"[yellow]→[/yellow] Note type '{VOCAB_NOTE_TYPE}' already exists — updating template and CSS\n"
             )
+            try:
+                update_note_type_template()
+                console.print("[green]✓[/green] Template and CSS updated\n")
+            except Exception as update_err:
+                console.print(f"[red]✗ Failed to update template: {update_err}[/red]")
+                return False
         else:
             console.print(f"[red]✗ Failed to create note type: {e}[/red]")
             return False
@@ -159,52 +165,92 @@ def run_setup():
     return True
 
 
+def _note_type_css() -> str:
+    return """
+.card {
+    font-family: ume-pms3;
+    font-size: 22px;
+    text-align: center;
+    color: black;
+    background-color: #fcf7ef;
+}
+
+.japanese {
+    font-size: 2em;
+}
+
+.english {
+    font-size: 1.4em;
+    margin: 2% 2%;
+}
+
+.smallEnglish {
+    font-size: 0.6em;
+    margin: 2% 2%;
+}
+
+ruby {
+    ruby-align: center;
+}
+
+rt {
+    font-size: 0.5em;
+}
+
+rt.known {
+    display: none;
+}
+"""
+
+
+def _note_type_card_template() -> dict:
+    return {
+        "Name": "Card 1",
+        "Front": '<div class="japanese">{{Front}}</div>',
+        "Back": "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}",
+    }
+
+
 def create_note_type():
     """Create the vocabulary note type via AnkiConnect.
 
     Creates a note type with:
     - All required fields from FIELDS constant
     - Basic card template (Front → Back)
-    - Simple CSS styling
+    - CSS with furigana visibility rules
 
     Raises:
         Exception: If note type creation fails
     """
-    # Define card template
-    card_template = {
-        "Name": "Card 1",
-        "Front": "{{Front}}",
-        "Back": "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}",
-    }
-
-    # Define CSS styling
-    css = """
-.card {
-    font-family: "Hiragino Kaku Gothic Pro", "Meiryo", "MS PGothic", sans-serif;
-    font-size: 24px;
-    text-align: center;
-    color: black;
-    background-color: white;
-}
-
-.front {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-.back {
-    font-size: 20px;
-    color: #333;
-}
-"""
-
-    # Create model configuration
     model_config = {
         "modelName": VOCAB_NOTE_TYPE,
         "inOrderFields": list(FIELDS.values()),
-        "css": css,
-        "cardTemplates": [card_template],
+        "css": _note_type_css(),
+        "cardTemplates": [_note_type_card_template()],
     }
 
-    # Create the note type
     connect.send_request("createModel", **model_config)
+
+
+def update_note_type_template() -> None:
+    """Update the card template and CSS for an existing note type.
+
+    Safe to call on an already-current install — just overwrites template and CSS.
+
+    Raises:
+        Exception: If the update fails
+    """
+    connect.send_request(
+        "updateModelTemplates",
+        model={
+            "name": VOCAB_NOTE_TYPE,
+            "templates": {"Card 1": _note_type_card_template()},
+        },
+    )
+    connect.send_request(
+        "updateModelStyling",
+        model={
+            "name": VOCAB_NOTE_TYPE,
+            "css": _note_type_css(),
+        },
+    )

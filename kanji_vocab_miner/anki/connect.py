@@ -1,3 +1,4 @@
+import re
 import requests
 import json
 from typing import List, Dict, Set, Any, Optional, Tuple
@@ -205,11 +206,61 @@ def reposition_card_to_top(card_id: int) -> None:
         raise Exception(f"Failed to reposition card {card_id}: {str(e)}")
 
 
-def prepare_note(word: JishoWord) -> Dict[str, Any]:
+def _update_furigana_classes(front_html: str, reviewed_kanji: Set[str]) -> Tuple[str, bool]:
+    """
+    Update <rt class="known"> on ruby elements based on reviewed_kanji.
+    Also migrates legacy Anki furigana notation (漢[reading]) to HTML.
+    Returns (updated_html, changed).
+    """
+    # Detect legacy Anki notation: kanji character followed by [reading]
+    if re.search(r'[\u4E00-\u9FFF]\[', front_html):
+        def migrate(m: re.Match) -> str:
+            kanji = m.group(1)
+            reading = m.group(2)
+            rt_class = ' class="known"' if kanji in reviewed_kanji else ''
+            return f'<ruby>{kanji}<rt{rt_class}>{reading}</rt></ruby>'
+
+        new_html = re.sub(r'([\u4E00-\u9FFF])\[([^\]]+)\]', migrate, front_html)
+        # Strip trailing spaces that the old format added after hiragana characters
+        new_html = re.sub(r'([\u3040-\u309F]) ', r'\1', new_html)
+        return new_html, True  # always changed: format migration
+
+    # New HTML format: update existing <rt> class attributes
+    if '<ruby>' not in front_html:
+        return front_html, False
+
+    changed = False
+
+    def update_rt(m: re.Match) -> str:
+        nonlocal changed
+        kanji = m.group(1)
+        existing_attrs = m.group(2)
+        reading = m.group(3)
+        is_known = 'class="known"' in existing_attrs or "class='known'" in existing_attrs
+        should_be_known = kanji in reviewed_kanji
+
+        if should_be_known == is_known:
+            return m.group(0)  # no change needed
+
+        changed = True
+        if should_be_known:
+            return f'<ruby>{kanji}<rt class="known">{reading}</rt></ruby>'
+        else:
+            return f'<ruby>{kanji}<rt>{reading}</rt></ruby>'
+
+    new_html = re.sub(
+        r'<ruby>([\u4E00-\u9FFF])<rt([^>]*)>(.*?)</rt></ruby>',
+        update_rt,
+        front_html,
+    )
+    return new_html, changed
+
+
+def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
     """Create an Anki note from a word dictionary"""
 
-    # Format the front with furigana
-    front = fetch_jisho_word_furigana(word.expression)
+    # Format the front with furigana HTML
+    front = fetch_jisho_word_furigana(word.expression, reviewed_kanji)
 
     # Format the back with first definition
     back = word.definitions[0]
@@ -233,7 +284,7 @@ def prepare_note(word: JishoWord) -> Dict[str, Any]:
 
 
 def add_vocab_note_to_deck(
-    selected_words: List[JishoWord], deckname: str = None
+    selected_words: List[JishoWord], deckname: str = None, reviewed_kanji: Set[str] = None
 ) -> None:
     """
     Add selected words to the vocabulary Anki deck.
@@ -250,6 +301,7 @@ def add_vocab_note_to_deck(
 
     # Use VOCAB_DECK_NAME if deckname not specified
     deck = deckname if deckname is not None else VOCAB_DECK_NAME
+    kanji_set = reviewed_kanji if reviewed_kanji is not None else set()
 
     def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
         """
@@ -283,7 +335,7 @@ def add_vocab_note_to_deck(
     prepared_notes = []
     for word in tqdm(selected_words, desc="Preparing notes", unit="note"):
         try:
-            prepared_note = prepare_note(word) | {"deckName": deck}
+            prepared_note = prepare_note(word, kanji_set) | {"deckName": deck}
             prepared_notes.append(prepared_note)
         except Exception as e:
             print(f"Error preparing note for {word.expression}: {str(e)}")
@@ -373,3 +425,51 @@ def get_reviewed_vocab() -> List[str]:
         # This behavior is consistent with get_reviewed_kanji
         print(f"Warning: Failed to get reviewed Vocab: {str(e)}")
         return []
+
+
+def sync_vocab_furigana() -> int:
+    """
+    Sync furigana visibility on all vocab cards based on the current reviewed kanji set.
+
+    Cards whose Front field contains kanji that have since been reviewed will have
+    their furigana hidden (rt class="known"). Cards with unreviewed kanji will have
+    furigana shown. Also migrates any cards still using the legacy Anki notation.
+
+    Returns:
+        Number of cards updated.
+    """
+    reviewed_kanji = get_reviewed_kanji()
+
+    try:
+        card_ids = send_request("findCards", query=f'deck:"{VOCAB_DECK_NAME}"')
+    except Exception:
+        return 0
+
+    if not card_ids:
+        return 0
+
+    cards_info = send_request("cardsInfo", cards=card_ids)
+
+    # Deduplicate by note ID — multiple card types can share one note
+    seen_notes: Set[int] = set()
+    updated = 0
+
+    for card in cards_info:
+        note_id = card.get("note")
+        if note_id in seen_notes:
+            continue
+        seen_notes.add(note_id)
+
+        front = card.get("fields", {}).get("Front", {}).get("value", "")
+        if not front:
+            continue
+
+        new_front, changed = _update_furigana_classes(front, reviewed_kanji)
+        if changed:
+            try:
+                update_note(note_id, {"Front": new_front})
+                updated += 1
+            except Exception as e:
+                print(f"Warning: Failed to update note {note_id}: {e}")
+
+    return updated

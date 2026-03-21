@@ -142,14 +142,14 @@ def handle_next_card() -> Optional[str]:
     return kanji
 
 
-def add_pending_words_to_anki(pending_words: List[JishoWord]) -> None:
+def add_pending_words_to_anki(pending_words: List[JishoWord], reviewed_kanji) -> None:
     """Add pending words to Anki deck."""
     if not pending_words:
         info("No words to add.")
         return
 
     with console.status(f"[bold]Adding {len(pending_words)} words to Anki…[/bold]", spinner="bouncingBar"):
-        ankiconnect.add_vocab_note_to_deck(pending_words)
+        ankiconnect.add_vocab_note_to_deck(pending_words, reviewed_kanji=reviewed_kanji)
 
     success(f"{len(pending_words)} words successfully added!")
 
@@ -218,6 +218,16 @@ def setup():
     sys.exit(0 if success else 1)
 
 
+def _sync_furigana_and_exit() -> None:
+    """Sync furigana on all vocab cards then exit."""
+    with console.status("[bold]Syncing furigana on vocab cards…[/bold]", spinner="dots"):
+        updated = ankiconnect.sync_vocab_furigana()
+    if updated > 0:
+        success(f"Updated furigana on {updated} vocab card(s).")
+    click.echo("Goodbye!")
+    sys.exit(0)
+
+
 def run_interactive():
     """Run the interactive word selection loop."""
     render.welcome_message()
@@ -232,6 +242,9 @@ def run_interactive():
             console.print(error)
             console.print()  # Empty line between errors
         sys.exit(1)
+
+    # Fetch reviewed kanji once at startup for use when adding new cards
+    reviewed_kanji = ankiconnect.get_reviewed_kanji()
 
     displayed_words = []  # Store the last displayed word list
     pending_words = []  # Store selected words to add to Anki later
@@ -255,7 +268,7 @@ def run_interactive():
             # Commit pending words to Anki
             elif user_input.lower() == "c":
                 click.echo(f"Committing {len(pending_words)} pending words to Anki...")
-                add_pending_words_to_anki(pending_words)
+                add_pending_words_to_anki(pending_words, reviewed_kanji)
                 pending_words.clear()  # I've known python for 5 years and have only just discovered this method!
 
             # Quit the program
@@ -265,9 +278,8 @@ def run_interactive():
                     default=True,
                 )
                 if confirm_add:
-                    add_pending_words_to_anki(pending_words)
-                click.echo("Goodbye!")
-                sys.exit(0)
+                    add_pending_words_to_anki(pending_words, reviewed_kanji)
+                _sync_furigana_and_exit()
 
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
@@ -300,8 +312,8 @@ def run_interactive():
 
         except KeyboardInterrupt:
             click.echo("\nOperation cancelled.")
-            add_pending_words_to_anki(pending_words)
-            sys.exit(0)
+            add_pending_words_to_anki(pending_words, reviewed_kanji)
+            _sync_furigana_and_exit()
 
         except Exception as e:
             click.echo(f"An unexpected error occurred: {str(e)}")

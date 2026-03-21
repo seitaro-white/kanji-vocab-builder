@@ -64,6 +64,9 @@ def fetch_jisho_word_furigana(word: str) -> str:
     Fetch the furigana mapping for a given word by scraping the Jisho web page.
 
     Return as a string in the format of "漢字[ふりがな] ひらがな"
+
+    This then uses the following html in the Anki card:
+
     """
 
     response = requests.get("https://jisho.org/word/" + word)
