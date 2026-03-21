@@ -200,6 +200,10 @@ rt {
 rt.known {
     display: none;
 }
+
+.show-all-furigana rt.known {
+    display: block;
+}
 """
 
 
@@ -207,7 +211,7 @@ def _note_type_card_template() -> dict:
     return {
         "Name": "Card 1",
         "Front": '<div class="japanese">{{Front}}</div>',
-        "Back": "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}",
+        "Back": '<div class="show-all-furigana">{{FrontSide}}</div>\n\n<hr id=answer>\n\n{{Back}}',
     }
 
 
