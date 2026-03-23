@@ -2,7 +2,7 @@
 # Imports
 import requests
 import urllib.parse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
@@ -59,14 +59,11 @@ def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
         raise Exception(f"Error processing Jisho API response: {str(e)}")
 
 
-def fetch_jisho_word_furigana(word: str) -> str:
+def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
     """
     Fetch the furigana mapping for a given word by scraping the Jisho web page.
 
-    Return as a string in the format of "漢字[ふりがな] ひらがな"
-
-    This then uses the following html in the Anki card:
-
+    Returns HTML ruby markup with <rt class="known"> for kanji in reviewed_kanji.
     """
 
     response = requests.get("https://jisho.org/word/" + word)
@@ -74,27 +71,29 @@ def fetch_jisho_word_furigana(word: str) -> str:
 
     wordhtml = soup.select("div.concept_light-representation")[0].extract()
 
-    # Convert furigana to anki-friendly format
     characters = wordhtml.select_one("span.text").text.strip(" \n")
     furigana = [i.text for i in wordhtml.select("span.kanji")]
 
-    # In some cases (e.g. 借金) even jisho doesn't have the correct furigana mapping
-    # So we'll have to just default to applying the full furigana to the full kanji
-    if len(furigana) != len([i for i in characters if is_kanji(i)]):
-        return characters + f"[{''.join(furigana)}]"
+    kanji_chars = [c for c in characters if is_kanji(c)]
 
-    # Match up each kanji with its furigana, while just adding spaces for hiragana
-    anki_format, furigana_idx = "", 0
+    # Fallback: apply full furigana to the whole word as one ruby
+    if len(furigana) != len(kanji_chars):
+        rt_class = ' class="known"' if all(c in reviewed_kanji for c in kanji_chars) else ''
+        return f'<ruby>{characters}<rt{rt_class}>{"".join(furigana)}</rt></ruby>'
+
+    # Match each kanji with its furigana; pass hiragana through as-is
+    result, furigana_idx = "", 0
     for c in characters:
         if is_kanji(c):
-            anki_format += f"{c}[{furigana[furigana_idx]}]"
+            rt_class = ' class="known"' if c in reviewed_kanji else ''
+            result += f'<ruby>{c}<rt{rt_class}>{furigana[furigana_idx]}</rt></ruby>'
             furigana_idx += 1
         elif is_hiragana(c):
-            anki_format += f"{c} "
+            result += c
         else:
             raise Exception(f"Unknown character type: {c}")
 
-    return anki_format
+    return result
 
 
 def fetch_kanji_summary(kanji: str) -> Optional[KanjiSummary]:

@@ -308,7 +308,7 @@ def run_interactive():
 
 
             else:
-                click.echo("Invalid input. Enter 'n', numbers, or 'q'.")
+                click.echo("Invalid input. Enter 'n' (next), numbers to select, 'c' (commit), or 'q' (quit).")
 
         except KeyboardInterrupt:
             click.echo("\nOperation cancelled.")
