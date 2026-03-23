@@ -207,11 +207,25 @@ rt.known {
 """
 
 
-def _note_type_card_template() -> dict:
+def _card_1_template() -> dict:
     return {
         "Name": "Card 1",
         "Front": '<div class="japanese">{{Front}}</div>',
         "Back": '<div class="show-all-furigana">{{FrontSide}}</div>\n\n<hr id=answer>\n\n{{Back}}',
+    }
+
+
+def _card_2_template() -> dict:
+    return {
+        "Name": "Card 2",
+        "Front": '<div class=english>\n\t{{Back}}\n</div>\n<div class=smallEnglish>\n\t{{Grammar}}\n</div>',
+        "Back": (
+            '<div class=english>\n\t{{Back}}\n</div>\n'
+            '<div class=smallEnglish>\n\t{{Grammar}}\n</div>\n\n'
+            '<hr id=answer>\n\n'
+            '<div class="show-all-furigana japanese">\n\t{{Front}}\n</div>\n'
+            '<div class=smallEnglish>\n\t{{Additional Definitions}}\n</div>'
+        ),
     }
 
 
@@ -230,7 +244,7 @@ def create_note_type():
         "modelName": VOCAB_NOTE_TYPE,
         "inOrderFields": list(FIELDS.values()),
         "css": _note_type_css(),
-        "cardTemplates": [_note_type_card_template()],
+        "cardTemplates": [_card_1_template(), _card_2_template()],
     }
 
     connect.send_request("createModel", **model_config)
@@ -248,7 +262,7 @@ def update_note_type_template() -> None:
         "updateModelTemplates",
         model={
             "name": VOCAB_NOTE_TYPE,
-            "templates": {"Card 1": _note_type_card_template()},
+            "templates": {"Card 1": _card_1_template(), "Card 2": _card_2_template()},
         },
     )
     connect.send_request(
