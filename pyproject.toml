@@ -50,3 +50,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["kanji_vocab_miner"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires Anki running with a card displayed in review mode",
+]
+addopts = "-m 'not integration'"
