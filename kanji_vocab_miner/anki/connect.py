@@ -299,52 +299,28 @@ def add_vocab_note_to_deck(
     if not selected_words:
         return
 
-    # Use VOCAB_DECK_NAME if deckname not specified
     deck = deckname if deckname is not None else VOCAB_DECK_NAME
     kanji_set = reviewed_kanji if reviewed_kanji is not None else set()
 
-    def add_non_duplicate_notes(notes: List[Dict[str, Any]]) -> Tuple[int, int]:
-        """
-        Add non-duplicate notes to Anki
+    added_count = 0
+    duplicates_count = 0
 
-        Returns:
-            Tuple of (added_count, duplicates_count)
-        """
-        # Check which notes can be added
-        can_add_result = send_request("canAddNotesWithErrorDetail", notes=notes)
-
-        # Filter out notes that would cause duplicate errors
-        notes_to_add = [
-            note for i, note in enumerate(notes) if can_add_result[i]["canAdd"]
-        ]
-
-        # Calculate counts
-        duplicates_count = len(notes) - len(notes_to_add)
-
-        # If no non-duplicate notes to add, return early
-        if not notes_to_add:
-            return 0, duplicates_count
-
-        # Add only the non-duplicate notes
-        send_request("addNotes", notes=notes_to_add)
-
-        # Return counts
-        return len(notes_to_add), duplicates_count
-
-    # Prepare all notes
-    prepared_notes = []
-    for word in tqdm(selected_words, desc="Preparing notes", unit="note"):
+    for word in tqdm(selected_words, desc="Adding notes", unit="note"):
         try:
-            prepared_note = prepare_note(word, kanji_set) | {"deckName": deck}
-            prepared_notes.append(prepared_note)
+            note = prepare_note(word, kanji_set) | {"deckName": deck}
         except Exception as e:
             print(f"Error preparing note for {word.expression}: {str(e)}")
             continue
 
-    # Add non-duplicate notes
-    added_count, duplicates_count = add_non_duplicate_notes(prepared_notes)
+        try:
+            send_request("addNote", note=note)
+            added_count += 1
+        except Exception as e:
+            if "duplicate" in str(e).lower():
+                duplicates_count += 1
+            else:
+                print(f"Error adding note for {word.expression}: {str(e)}")
 
-    # Print summary
     if duplicates_count > 0 and added_count > 0:
         print(f"Added {added_count} notes. Skipped {duplicates_count} duplicate notes.")
     elif duplicates_count > 0:
