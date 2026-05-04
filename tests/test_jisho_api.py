@@ -3,9 +3,24 @@ import requests
 import json
 import jsonschema
 import os
+from unittest.mock import patch, MagicMock
 from kanji_vocab_miner import jisho
 
 from typing import List
+
+
+def _make_furigana_response(characters: str, furigana: list[str]) -> MagicMock:
+    """Build a mock requests.Response whose HTML looks like a Jisho word page."""
+    kanji_spans = "".join(f'<span class="kanji">{f}</span>' for f in furigana)
+    html = f"""
+    <div class="concept_light-representation">
+        <span class="text">{characters}</span>
+        {kanji_spans}
+    </div>
+    """
+    mock_response = MagicMock()
+    mock_response.text = html
+    return mock_response
 
 
 def test_fetch_jisho_data():
@@ -63,21 +78,82 @@ def test_search_words():
 @pytest.mark.parametrize(
     "word, expected",
     [
-        ("学校", "学[がっ]校[こう]"),
-        ("お風呂", "お 風[ふ]呂[ろ]"),
-        ("走る", "走[はし]る "),
-        ("借金", "借金[しゃっきん]"),
+        ("学校", "<ruby>学<rt>がっ</rt></ruby><ruby>校<rt>こう</rt></ruby>"),
+        ("お風呂", "お<ruby>風<rt>ふ</rt></ruby><ruby>呂<rt>ろ</rt></ruby>"),
+        ("走る", "<ruby>走<rt>はし</rt></ruby>る"),
+        ("借金", "<ruby>借金<rt>しゃっきん</rt></ruby>"),
     ],
 )
 def test_fetch_jisho_word_furigana(word, expected):
     """Test that fetch_jisho_word_furigana returns a valid furigana string."""
-    furigana_html = jisho.fetch_jisho_word_furigana(word)
+    furigana_html = jisho.fetch_jisho_word_furigana(word, set())
 
     # Check that the result is a string
     assert isinstance(furigana_html, str)
 
     # Check for basic ruby HTML structure
     assert furigana_html == expected
+
+
+@pytest.mark.parametrize(
+    "characters, furigana, reviewed_kanji, expected",
+    [
+        # Per-kanji path — no kanji reviewed
+        (
+            "学校",
+            ["がっ", "こう"],
+            set(),
+            "<ruby>学<rt>がっ</rt></ruby><ruby>校<rt>こう</rt></ruby>",
+        ),
+        # Per-kanji path — one kanji reviewed
+        (
+            "学校",
+            ["がっ", "こう"],
+            {"学"},
+            '<ruby>学<rt class="known">がっ</rt></ruby><ruby>校<rt>こう</rt></ruby>',
+        ),
+        # Per-kanji path — all kanji reviewed
+        (
+            "学校",
+            ["がっ", "こう"],
+            {"学", "校"},
+            '<ruby>学<rt class="known">がっ</rt></ruby><ruby>校<rt class="known">こう</rt></ruby>',
+        ),
+        # Per-kanji path — hiragana suffix passes through; reviewed kanji gets class
+        (
+            "走る",
+            ["はし"],
+            {"走"},
+            '<ruby>走<rt class="known">はし</rt></ruby>る',
+        ),
+        # Fallback path (one furigana for two kanji) — no kanji reviewed
+        (
+            "借金",
+            ["しゃっきん"],
+            set(),
+            "<ruby>借金<rt>しゃっきん</rt></ruby>",
+        ),
+        # Fallback path — partially reviewed (not all kanji known → no class)
+        (
+            "借金",
+            ["しゃっきん"],
+            {"借"},
+            "<ruby>借金<rt>しゃっきん</rt></ruby>",
+        ),
+        # Fallback path — all kanji reviewed → class="known" on the group rt
+        (
+            "借金",
+            ["しゃっきん"],
+            {"借", "金"},
+            '<ruby>借金<rt class="known">しゃっきん</rt></ruby>',
+        ),
+    ],
+)
+def test_furigana_known_kanji_markup(characters, furigana, reviewed_kanji, expected):
+    """Test that fetch_jisho_word_furigana applies class="known" exactly to reviewed kanji."""
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=_make_furigana_response(characters, furigana)):
+        result = jisho.fetch_jisho_word_furigana(characters, reviewed_kanji)
+    assert result == expected
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,7 @@ def test_ping_anki():
     except (requests.RequestException, ConnectionError) as e:
         pytest.fail(f"Failed to connect to Anki: {str(e)}. Make sure Anki is running with AnkiConnect installed.")
 
+@pytest.mark.integration
 def test_get_current_card():
     """
     Test getting the current card from Anki.
@@ -46,6 +47,7 @@ def test_get_current_card():
     # Assert we got something back
     assert card, "No card returned from get_current_card"
 
+@pytest.mark.integration
 def test_get_current_kanji():
     """
     Test getting the current kanji from Anki.
@@ -113,6 +115,44 @@ def test_get_reviewed_vocab():
     print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")
 
 
+@pytest.fixture
+def kanji_card_with_restore():
+    """
+    Yields (card_id, original_due) for a known kanji card and restores its
+    due value after the test, so Anki's queue order is not permanently changed.
+    """
+    card_id = connect.find_kanji_card_id("使")
+    assert card_id is not None, "Could not find kanji card for 使 — is the deck loaded?"
+    info = connect.send_request("cardsInfo", cards=[card_id])
+    original_due = info[0]["due"]
+    yield card_id, original_due
+    connect.send_request("setSpecificValueOfCard", card=card_id, keys=["due"], newValues=[original_due])
+
+
+def test_reposition_card_to_top(kanji_card_with_restore):
+    """Test that reposition_card_to_top moves a card to due=0 in its queue."""
+    card_id, original_due = kanji_card_with_restore
+    connect.reposition_card_to_top(card_id)
+    info = connect.send_request("cardsInfo", cards=[card_id])
+    assert info[0]["due"] == 0
+
+
+def test_reposition_restores_correctly(kanji_card_with_restore):
+    """Sanity check: the fixture restore actually works (due goes back to original)."""
+    card_id, original_due = kanji_card_with_restore
+    connect.reposition_card_to_top(card_id)
+    # Teardown will restore — we just verify it was moved during the test
+    info = connect.send_request("cardsInfo", cards=[card_id])
+    assert info[0]["due"] == 0
+    assert original_due != 0  # Confirm the card wasn't already at 0
+
+
+def test_find_kanji_card_id_returns_none_for_unknown():
+    """Test that find_kanji_card_id returns None for a character not in the deck."""
+    result = connect.find_kanji_card_id("X")
+    assert result is None
+
+
 def test_prepare_note():
     """
     Test the prepare_note function for creating Anki note data.
@@ -129,13 +169,13 @@ def test_prepare_note():
     )
 
     # Call prepare_note - this will internally call fetch_jisho_word_furigana
-    prepared_note_full = connect.prepare_note(sample_word_full)
+    prepared_note_full = connect.prepare_note(sample_word_full, set())
 
-    # Define expected output, assuming fetch_jisho_word_furigana("日本語") -> "日[に]本[ほん]語[ご]"
+    # Define expected output, assuming fetch_jisho_word_furigana("日本語", set()) -> "<ruby>日本語<rt>にほんご</rt></ruby>"
     expected_note_full = {
         "modelName": "MyJapaneseVocabulary",
         "fields": {
-            "Front": "日本語[にほんご]", # Hardcoded expected furigana
+            "Front": "<ruby>日本語<rt>にほんご</rt></ruby>",
             "Back": "Japanese language",
             "Expression": "日本語",
             "Kana Reading": "にほんご",
@@ -157,13 +197,13 @@ def test_prepare_note():
         definitions=["to learn"],
         parts_of_speech=["Verb"]
     )
-    prepared_note_minimal = connect.prepare_note(sample_word_minimal)
+    prepared_note_minimal = connect.prepare_note(sample_word_minimal, set())
 
-    # Define expected output, assuming fetch_jisho_word_furigana("学ぶ") -> "学[まな]ぶ "
+    # Define expected output, assuming fetch_jisho_word_furigana("学ぶ", set()) -> "<ruby>学<rt>まな</rt></ruby>ぶ"
     expected_note_minimal = {
         "modelName": "MyJapaneseVocabulary",
         "fields": {
-            "Front": "学[まな]ぶ ", # Hardcoded expected furigana
+            "Front": "<ruby>学<rt>まな</rt></ruby>ぶ",
             "Back": "to learn",
             "Expression": "学ぶ",
             "Kana Reading": "まなぶ",

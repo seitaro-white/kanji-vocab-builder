@@ -199,9 +199,9 @@ def reposition_card_to_top(card_id: int) -> None:
         card_id: The ID of the card to reposition.
     """
     try:
-        # The 'odue' field controls the position in the queue for new/review cards.
-        # Setting it to 0 puts it at the very front.
-        send_request("setSpecificValueOfCard", card=card_id, keys=["odue"], newValues=[0])
+        # The 'due' field controls position (new cards) or day due (review cards).
+        # Setting it to 0 puts it at the very front of the queue.
+        send_request("setSpecificValueOfCard", card=card_id, keys=["due"], newValues=[0])
     except Exception as e:
         raise Exception(f"Failed to reposition card {card_id}: {str(e)}")
 
