@@ -267,6 +267,9 @@ def run_interactive():
 
             # Commit pending words to Anki
             elif user_input.lower() == "c":
+                if not pending_words:
+                    info("No words to commit.")
+                    continue
                 click.echo(f"Committing {len(pending_words)} pending words to Anki...")
                 add_pending_words_to_anki(pending_words, reviewed_kanji)
                 pending_words.clear()  # I've known python for 5 years and have only just discovered this method!
