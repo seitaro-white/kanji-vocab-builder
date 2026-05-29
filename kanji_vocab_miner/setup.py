@@ -168,7 +168,7 @@ def run_setup():
 def _note_type_css() -> str:
     return """
 .card {
-    font-family: ume-pms3;
+    font-family: ume-pms3, "Noto Sans CJK JP", sans-serif;
     font-size: 22px;
     text-align: center;
     color: black;
@@ -202,7 +202,7 @@ rt.known {
 }
 
 .show-all-furigana rt.known {
-    display: block;
+    display: ruby-text;
 }
 """
 
