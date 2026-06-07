@@ -276,12 +276,13 @@ def run_interactive():
 
             # Quit the program
             elif user_input.lower() == "q":
-                confirm_add = click.confirm(
-                    f"You have {len(pending_words)} words pending. Add them to Anki",
-                    default=True,
-                )
-                if confirm_add:
-                    add_pending_words_to_anki(pending_words, reviewed_kanji)
+                if pending_words:
+                    confirm_add = click.confirm(
+                        f"You have {len(pending_words)} words pending. Add them to Anki",
+                        default=True,
+                    )
+                    if confirm_add:
+                        add_pending_words_to_anki(pending_words, reviewed_kanji)
                 _sync_furigana_and_exit()
 
             # You can also just enter a kanji directly
