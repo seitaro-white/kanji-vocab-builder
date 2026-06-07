@@ -33,13 +33,19 @@ Using this tool requires some Anki setup:
    - File → Import → Browse to downloaded `.apkg` file
    - The tool will re-order existing cards from this deck for kanji study, while creating entirely
 
-Once this is done (and Anki is running with AnkiConnect enabled), you can run the tool normally with uv.
+Once this is done (and Anki is running with AnkiConnect enabled), install the tool with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/yourusername/kanji-vocab-miner.git
-cd kanji-vocab-miner
-uv sync
-uv run kanji-vocab-miner setup
+uv tool install git+https://github.com/yourusername/kanji-vocab-miner.git
+kanji-vocab-miner setup
+```
+
+This installs `kanji-vocab-miner` globally so you can run it from any directory. If you don't have uv installed, follow the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+To update to the latest version:
+
+```bash
+uv tool upgrade kanji-vocab-miner
 ```
 
 
@@ -47,7 +53,7 @@ uv run kanji-vocab-miner setup
 
 ### Interactive Mode
 
-Make sure Anki is running and run `uv run kanji-vocab-miner` to start the interactive session:
+Make sure Anki is running and run `kanji-vocab-miner` to start the interactive session:
 
 **Commands:**
 - `n` - Fetch next kanji from your Anki deck
