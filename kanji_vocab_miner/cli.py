@@ -1,4 +1,5 @@
 import sys
+import unicodedata
 from typing import List, Optional
 
 import click
@@ -154,11 +155,28 @@ def add_pending_words_to_anki(pending_words: List[JishoWord], reviewed_kanji) ->
     success(f"{len(pending_words)} words successfully added!")
 
 
+def normalized_input(prompt: str) -> str:
+    """Read a line and normalize full-width ASCII to half-width."""
+    return unicodedata.normalize("NFKC", console.input(prompt))
+
+
+def normalized_confirm(prompt: str, default: bool = False) -> bool:
+    """Replacement for click.confirm that accepts full-width y/n input."""
+    default_str = "Y/n" if default else "y/N"
+    while True:
+        answer = normalized_input(f"{prompt} [{default_str}]: ").strip().lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        if answer == "":
+            return default
+
+
 def get_user_input(pending_count: int) -> str:
     """Get user input with a coloured Rich prompt."""
     pending = f"[yellow]({pending_count} pending)[/yellow] " if pending_count else ""
-    # use console.input so Rich markup is rendered
-    return console.input(f"{pending}[bold green]> [/bold green]")
+    return normalized_input(f"{pending}[bold green]> [/bold green]")
 
 
 def prompt_and_reposition_kanji(kanji: str) -> bool:
@@ -171,9 +189,9 @@ def prompt_and_reposition_kanji(kanji: str) -> bool:
     Returns:
         True if the card was repositioned, False otherwise.
     """
-    confirm_reposition = click.confirm(
+    confirm_reposition = normalized_confirm(
         f"Do you want to reposition the Kanji card for '{kanji}' to the top of its deck?",
-        default=False, # Default to No, as this is an optional action
+        default=False,
     )
 
     if confirm_reposition:
@@ -277,7 +295,7 @@ def run_interactive():
             # Quit the program
             elif user_input.lower() == "q":
                 if pending_words:
-                    confirm_add = click.confirm(
+                    confirm_add = normalized_confirm(
                         f"You have {len(pending_words)} words pending. Add them to Anki",
                         default=True,
                     )
@@ -299,7 +317,7 @@ def run_interactive():
                     word = fetch_word_from_word(user_input)
 
                 if word:
-                    add_confirm = click.confirm(
+                    add_confirm = normalized_confirm(
                         f"Do you want to add {word.expression} ({word.kana}) to pending words?",
                         default=True,
                     )
