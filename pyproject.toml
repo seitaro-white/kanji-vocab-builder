@@ -28,6 +28,7 @@ dependencies = [
     "jamdict-data>=1.5",
     "jsonschema>=4.23.0",
     "pip>=25.1.1",
+    "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.4",
     "pydantic-settings>=2.0.0",
     "pytest==7.4.0",

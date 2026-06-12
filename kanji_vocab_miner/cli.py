@@ -3,6 +3,8 @@ import unicodedata
 from typing import List, Optional
 
 import click
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
@@ -13,7 +15,6 @@ from kanji_vocab_miner.jisho import JishoWord
 
 from jamdict import Jamdict
 from kanji_vocab_miner.render import console, info, success, error
-from rich.text import Text # Import Text for escaping strings
 
 
 # Initialize Jamdict for word lookups
@@ -157,7 +158,7 @@ def add_pending_words_to_anki(pending_words: List[JishoWord], reviewed_kanji) ->
 
 def normalized_input(prompt: str) -> str:
     """Read a line and normalize full-width ASCII to half-width."""
-    return unicodedata.normalize("NFKC", console.input(prompt))
+    return unicodedata.normalize("NFKC", pt_prompt(prompt))
 
 
 def normalized_confirm(prompt: str, default: bool = False) -> bool:
@@ -174,9 +175,12 @@ def normalized_confirm(prompt: str, default: bool = False) -> bool:
 
 
 def get_user_input(pending_count: int) -> str:
-    """Get user input with a coloured Rich prompt."""
-    pending = f"[yellow]({pending_count} pending)[/yellow] " if pending_count else ""
-    return normalized_input(f"{pending}[bold green]> [/bold green]")
+    """Get user input with a coloured prompt."""
+    if pending_count:
+        prompt_text = HTML(f"<ansiyellow>({pending_count} pending)</ansiyellow> <ansigreen><b>&gt; </b></ansigreen>")
+    else:
+        prompt_text = HTML("<ansigreen><b>&gt; </b></ansigreen>")
+    return unicodedata.normalize("NFKC", pt_prompt(prompt_text))
 
 
 def prompt_and_reposition_kanji(kanji: str) -> bool:
