@@ -370,19 +370,51 @@ def get_reviewed_kanji() -> Set[str]:
         return set()
 
 
-def get_reviewed_vocab() -> List[str]:
+def get_all_kanji() -> Set[str]:
     """
-    Get a list of reviewed words from the vocabulary deck.
-    Extracts the main word from the 'Front' field, typically from <ruby> tags.
+    Get every Kanji present in the configured kanji deck, regardless of whether
+    the card has been reviewed. Used as the denominator for "Jouyou kanji not
+    yet in your deck".
 
     Returns:
-        A list of reviewed words (main text from ruby tags or plain text).
+        A set of all Kanji characters in the deck (empty set on failure).
+    """
+    all_kanji: Set[str] = set()
+    try:
+        kanji_deck = get_config().kanji_deck.name
+        card_ids = send_request("findCards", query=f'deck:"{kanji_deck}"')
+        if not card_ids:
+            return all_kanji
+
+        cards_info = send_request("cardsInfo", cards=card_ids)
+        for card in cards_info:
+            if "fields" in card and "Kanji" in card["fields"]:
+                all_kanji.add(card["fields"]["Kanji"]["value"])
+        return all_kanji
+    except Exception as e:
+        print(f"Warning: Failed to get all Kanji: {str(e)}")
+        return set()
+
+
+def get_reviewed_vocab(include_new: bool = True) -> List[str]:
+    """
+    Get a list of words from the vocabulary deck.
+    Extracts the main word from the 'Front' field, typically from <ruby> tags.
+
+    Args:
+        include_new: When False, only count cards seen at least once (-is:new),
+            matching the "reviewed" definition used for kanji. Defaults to True
+            (every card in the deck) to preserve "already in deck" lookups.
+
+    Returns:
+        A list of words (main text from ruby tags or plain text).
     """
     reviewed_vocab: List[str] = []
     try:
-        # Find card IDs of reviewed cards in the vocabulary deck
-        # Reviewed cards are those that are not new.
-        card_ids = send_request("findCards", query=f"deck:{VOCAB_DECK_NAME}")
+        query = f'deck:"{VOCAB_DECK_NAME}"'
+        if not include_new:
+            query += " -is:new"
+        card_ids = send_request("findCards", query=query)
 
         # Get card info for each card
         cards_info = send_request("cardsInfo", cards=card_ids)

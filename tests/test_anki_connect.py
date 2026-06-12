@@ -115,6 +115,42 @@ def test_get_reviewed_vocab():
     print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")
 
 
+def test_get_all_kanji_ignores_review_state(monkeypatch):
+    """get_all_kanji returns every kanji in the deck, regardless of review state."""
+    def fake_send(action, **params):
+        if action == "findCards":
+            # Must NOT filter by review state — we want the whole deck.
+            assert "is:new" not in params["query"]
+            return [1, 2, 3]
+        if action == "cardsInfo":
+            return [
+                {"fields": {"Kanji": {"value": "学"}}},
+                {"fields": {"Kanji": {"value": "校"}}},
+                {"fields": {"Kanji": {"value": "学"}}},  # duplicate collapses in a set
+            ]
+        raise AssertionError(f"unexpected action {action}")
+
+    monkeypatch.setattr(connect, "send_request", fake_send)
+    assert connect.get_all_kanji() == {"学", "校"}
+
+
+def test_get_reviewed_vocab_seen_only_adds_filter(monkeypatch):
+    """include_new=False restricts to cards seen at least once (-is:new)."""
+    captured = {}
+
+    def fake_send(action, **params):
+        if action == "findCards":
+            captured["query"] = params["query"]
+            return [10]
+        if action == "cardsInfo":
+            return [{"fields": {"Expression": {"value": "日本"}}}]
+        raise AssertionError(f"unexpected action {action}")
+
+    monkeypatch.setattr(connect, "send_request", fake_send)
+    connect.get_reviewed_vocab(include_new=False)
+    assert "-is:new" in captured["query"]
+
+
 @pytest.fixture
 def kanji_card_with_restore():
     """
