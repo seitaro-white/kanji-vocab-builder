@@ -8,7 +8,7 @@ from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
-from kanji_vocab_miner import card_processor, frequency, jisho, progress, render
+from kanji_vocab_miner import card_processor, frequency, jisho, known_words, progress, render
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
@@ -247,16 +247,68 @@ def stats():
         try:
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
             all_kanji = ankiconnect.get_all_kanji()
-            known_vocab = ankiconnect.get_reviewed_vocab(include_new=False)
+            deck_vocab = ankiconnect.get_reviewed_vocab(include_new=False)
         except Exception as e:
             error(f"AnkiConnect error: {e}")
             sys.exit(1)
 
+        # Words you've marked known (but not carded) count toward coverage too.
+        known_vocab = deck_vocab + list(known_words.load_known_words())
         freq_map = frequency.build_frequency_index()
         kanji_progress = progress.kanji_coverage(reviewed_kanji, all_kanji)
         vocab_progress = progress.vocab_coverage(known_vocab, freq_map)
 
     render.progress_dashboard(kanji_progress, vocab_progress)
+
+
+@jisho_anki.command(name="review-band")
+@click.argument("band", type=int)
+def review_band(band):
+    """Review words in frequency BAND (1-48; band 1 = top 500) you haven't carded.
+
+    Shows each word not already in your deck or known list and asks whether you
+    know it. Answering yes records it (without making a flashcard) so it counts
+    toward your coverage.
+    """
+    if not (1 <= band <= 48):
+        error("BAND must be between 1 and 48 (band 1 = top 500 words).")
+        sys.exit(1)
+
+    with console.status(f"[bold]Loading band {band}…[/bold]", spinner="dots"):
+        try:
+            deck = set(ankiconnect.get_reviewed_vocab(include_new=True))
+        except Exception as e:
+            error(f"AnkiConnect error: {e}")
+            sys.exit(1)
+        already_known = known_words.load_known_words()
+        words = frequency.words_in_band(band)
+
+    skip = deck | already_known
+    unknown = [w for w in words if w.expression not in skip]
+
+    if not unknown:
+        success(f"Nothing to review — all {len(words)} words in band {band} are already accounted for.")
+        return
+
+    info(
+        f"Band {band}: {len(unknown)} of {len(words)} words not yet known.  "
+        "[bold]y[/bold]=I know it  [bold]n[/bold]=skip  [bold]q[/bold]=quit"
+    )
+
+    marked = 0
+    for idx, word in enumerate(unknown, 1):
+        render.review_word(word, idx, len(unknown))
+        try:
+            answer = normalized_input("know it? [y/N/q]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            break
+        if answer == "q":
+            break
+        if answer in ("y", "yes"):
+            if known_words.add_known_word(word.expression):
+                marked += 1
+
+    success(f"Marked {marked} word(s) as known — they'll now count toward your coverage.")
 
 
 def _sync_furigana_and_exit() -> None:

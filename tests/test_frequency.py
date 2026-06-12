@@ -22,3 +22,22 @@ def test_build_frequency_index_takes_min_band_per_surface():
     # frequent) must win. 国 appears as 国/國; the common form is highly ranked.
     index = frequency.build_frequency_index()
     assert index["国"] <= 5
+
+
+def test_words_in_band_returns_expression_kana_definition():
+    words = frequency.words_in_band(1)  # nf01 == top 500
+
+    assert len(words) > 100  # a band holds up to ~500 entries
+    # Every entry has the three display fields populated.
+    for w in words[:20]:
+        assert w.expression and w.kana and w.definition
+
+    # The band's surface forms all sit in band 1 of the frequency index.
+    index = frequency.build_frequency_index()
+    sample = words[0]
+    assert index.get(sample.expression) == 1 or index.get(sample.kana) == 1
+
+
+def test_words_in_band_empty_for_out_of_range():
+    assert frequency.words_in_band(0) == []
+    assert frequency.words_in_band(99) == []

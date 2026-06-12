@@ -218,6 +218,17 @@ def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
     )
 
 
+def review_word(word, position: int, total: int) -> None:
+    """Render a single band word for the know-it review prompt."""
+    console.print(
+        f"[dim]{position}/{total}[/dim]  "
+        f"[bold green1]{word.expression}[/bold green1]  "
+        f"([cornflower_blue]{word.kana}[/cornflower_blue])"
+    )
+    if word.definition:
+        console.print(f"        [grey74]{word.definition}[/grey74]")
+
+
 def info(msg: str) -> None:
     console.print(f"  [cyan]{msg}[/cyan]")
 
