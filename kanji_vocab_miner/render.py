@@ -9,7 +9,9 @@ from rich.text import Text
 from rich.rule import Rule
 
 from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner import progress
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
+from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
 
 from jamdict.jmdict import JMDEntry
 
@@ -137,6 +139,83 @@ def word(word: JishoWord) -> None:
 
     console.print(table)
     console.print(Rule(style="dim"))
+
+
+def _bar(known: int, total: int, width: int = 24) -> Text:
+    """Build a coloured progress bar with a 'known/total (pct%)' suffix."""
+    pct = (known / total) if total else 0.0
+    filled = round(pct * width)
+    # Colour by how far along: red -> yellow -> green.
+    colour = "#ff5f5f" if pct < 0.34 else "#ebff0a" if pct < 0.67 else "#00c18b"
+    bar = Text()
+    bar.append("█" * filled, style=colour)
+    bar.append("░" * (width - filled), style="grey37")
+    bar.append(f"  {known}/{total} ({pct * 100:.0f}%)", style="grey74")
+    return bar
+
+
+def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
+    """A two-column grid of label + bar for the given (label, known, total) rows."""
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(justify="right", style="bold chartreuse3", no_wrap=True)
+    grid.add_column()
+    for label, known, total in rows:
+        grid.add_row(label, _bar(known, total))
+    return grid
+
+
+def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
+    """Render the Jouyou-kanji and vocab-frequency coverage dashboard."""
+    # --- Kanji panel ---
+    grade_label = {
+        1: "Grade 1", 2: "Grade 2", 3: "Grade 3", 4: "Grade 4",
+        5: "Grade 5", 6: "Grade 6", "secondary": "Secondary",
+    }
+    kanji_body = Table.grid()
+    kanji_body.add_column()
+    kanji_body.add_row(_bar(kanji.known_total, kanji.total, width=30))
+    kanji_body.add_row("")
+    kanji_body.add_row(
+        _progress_grid(
+            [(grade_label[g.grade], g.known, g.total) for g in kanji.grades]
+        )
+    )
+    kanji_body.add_row("")
+    kanji_body.add_row(
+        Text(
+            f"{kanji.missing_from_deck} Jouyou kanji not yet in your deck",
+            style="dim italic",
+        )
+    )
+    console.print(
+        Panel(
+            kanji_body,
+            title="[bold yellow]Kanji — Jouyou coverage[/bold yellow]",
+            border_style="bright_blue",
+        )
+    )
+
+    # --- Vocab panel: coverage bars per frequency bin (by word rank) ---
+    pct = (vocab.placed / vocab.total_ranked * 100) if vocab.total_ranked else 0.0
+
+    vocab_body = Table.grid()
+    vocab_body.add_column()
+    vocab_body.add_row(_progress_grid(progress.binned_vocab(vocab.bands)))
+    vocab_body.add_row("")
+    vocab_body.add_row(
+        Text(
+            f"{vocab.placed}/{vocab.total_ranked} top-frequency words known "
+            f"({pct:.0f}%)  •  {vocab.unranked} deck words with no frequency band",
+            style="dim italic",
+        )
+    )
+    console.print(
+        Panel(
+            vocab_body,
+            title="[bold yellow]Vocab — frequency coverage[/bold yellow]",
+            border_style="bright_blue",
+        )
+    )
 
 
 def info(msg: str) -> None:

@@ -8,7 +8,7 @@ from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
-from kanji_vocab_miner import card_processor, jisho, render
+from kanji_vocab_miner import card_processor, frequency, jisho, progress, render
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
@@ -238,6 +238,25 @@ def setup():
 
     success = run_setup()
     sys.exit(0 if success else 1)
+
+
+@jisho_anki.command()
+def stats():
+    """Show Jouyou kanji and vocab frequency coverage."""
+    with console.status("[bold]Crunching your progress…[/bold]", spinner="dots"):
+        try:
+            reviewed_kanji = ankiconnect.get_reviewed_kanji()
+            all_kanji = ankiconnect.get_all_kanji()
+            known_vocab = ankiconnect.get_reviewed_vocab(include_new=False)
+        except Exception as e:
+            error(f"AnkiConnect error: {e}")
+            sys.exit(1)
+
+        freq_map = frequency.build_frequency_index()
+        kanji_progress = progress.kanji_coverage(reviewed_kanji, all_kanji)
+        vocab_progress = progress.vocab_coverage(known_vocab, freq_map)
+
+    render.progress_dashboard(kanji_progress, vocab_progress)
 
 
 def _sync_furigana_and_exit() -> None:
