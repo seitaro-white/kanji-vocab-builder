@@ -1,7 +1,18 @@
 """Smoke tests for the progress dashboard rendering."""
 
 from kanji_vocab_miner import render
+from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.progress import BandCell, GradeBar, KanjiProgress, VocabProgress
+
+
+def test_words_table_shows_frequency_band():
+    word = JishoWord(
+        expression="日本", kana="にほん", jlpt=5,
+        definitions=["Japan"], parts_of_speech=["n"],
+    )
+    with render.console.capture() as cap:
+        render.words_table([(word, False)], [], {"日本": 2})  # band 2 -> top 1k
+    assert "top 1k" in cap.get()
 
 
 def _sample():

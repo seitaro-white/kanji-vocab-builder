@@ -46,7 +46,7 @@ def fetch_words_from_kanji(kanji: str) -> List[JishoWord]:
 
     sorted_words = card_processor.sort_and_limit_words(words, kanji, 20)
 
-    render.words_table(sorted_words, reviewed_vocab)
+    render.words_table(sorted_words, reviewed_vocab, frequency.get_frequency_index())
 
     return [w for w, _ in sorted_words]  # Return the displayed words
 
@@ -76,7 +76,7 @@ def fetch_word_from_word(word: str) -> Optional[JishoWord]:
             parts_of_speech=pos,
         )
 
-        render.word(jisho_word)
+        render.word(jisho_word, frequency.get_frequency_index())
 
         return jisho_word
 

@@ -24,6 +24,14 @@ def test_build_frequency_index_takes_min_band_per_surface():
     assert index["国"] <= 5
 
 
+def test_band_label():
+    assert frequency.band_label(None) == ""  # no band -> blank
+    assert frequency.band_label(1) == "top 500"
+    assert frequency.band_label(2) == "top 1k"
+    assert frequency.band_label(5) == "top 2.5k"
+    assert frequency.band_label(48) == "top 24k"
+
+
 def test_words_in_band_returns_expression_kana_definition():
     words = frequency.words_in_band(1)  # nf01 == top 500
 

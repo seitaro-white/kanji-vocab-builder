@@ -9,7 +9,7 @@ from rich.text import Text
 from rich.rule import Rule
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner import progress
+from kanji_vocab_miner import frequency, progress
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
 
@@ -62,15 +62,20 @@ def kanji_summary(summary: KanjiSummary) -> None:
 
 
 def words_table(
-    sorted_words: List[Tuple[JishoWord, bool]], reviewed_vocab: List[str]
+    sorted_words: List[Tuple[JishoWord, bool]],
+    reviewed_vocab: List[str],
+    freq_map: dict = None,
 ) -> None:
     """Render a table of words with details"""
+
+    freq_map = freq_map or {}
 
     table = Table(box=None, show_header=False)
 
     table.add_column("Index", style="yellow2")
     table.add_column("Word", style="bold chartreuse3")
     table.add_column("Reading", style="cornflower_blue")
+    table.add_column("Freq", style="dark_orange3")
     table.add_column("JLPT",)
     table.add_column("Priority", style="magenta")
     table.add_column("Already in Deck", style="light_slate_grey")
@@ -101,10 +106,13 @@ def words_table(
             else ""
         )
 
+        freq_text = frequency.band_label(freq_map.get(word.expression))
+
         table.add_row(
             f"{idx}.",
             word.expression,
             word.kana,
+            freq_text,
             jlpt_text,
             priority_text,
             in_deck,
@@ -116,10 +124,16 @@ def words_table(
     console.print(Rule(style="dim"))
 
 
-def word(word: JishoWord) -> None:
+def word(word: JishoWord, freq_map: dict = None) -> None:
     """Render a single word with its details"""
 
-    console.print(f"  [bold green1]{word.expression}[/bold green1]  ([cornflower_blue]{word.kana}[/cornflower_blue])")
+    freq_map = freq_map or {}
+    freq_label = frequency.band_label(freq_map.get(word.expression))
+    freq_suffix = f"  [dark_orange3]{freq_label}[/dark_orange3]" if freq_label else ""
+    console.print(
+        f"  [bold green1]{word.expression}[/bold green1]  "
+        f"([cornflower_blue]{word.kana}[/cornflower_blue]){freq_suffix}"
+    )
 
     table = Table(box=None, show_header=False)
 

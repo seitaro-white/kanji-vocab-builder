@@ -6,6 +6,7 @@ we read every kanji/kana form's ``nfXX`` priority code in a single query and
 collapse it to the smallest (most frequent) band per surface form.
 """
 
+import functools
 import os
 import re
 import sqlite3
@@ -16,6 +17,20 @@ import jamdict_data
 _NF_RE = re.compile(r"^nf(\d+)$")
 
 NUM_BANDS = 48
+BAND_SIZE = 500
+
+
+def band_label(band: int | None) -> str:
+    """Human-readable rank label for an nf band, e.g. 5 -> 'top 2.5k'.
+
+    Returns an empty string for None (a word with no frequency band).
+    """
+    if not band:
+        return ""
+    upper = band * BAND_SIZE
+    if upper < 1000:
+        return f"top {upper}"
+    return f"top {upper / 1000:g}k"
 
 
 @dataclass
@@ -36,6 +51,12 @@ _QUERY = """
 
 def _db_path() -> str:
     return os.path.join(os.path.dirname(jamdict_data.__file__), "jamdict.db")
+
+
+@functools.lru_cache(maxsize=1)
+def get_frequency_index() -> dict[str, int]:
+    """Cached frequency index, built once per process (read-only)."""
+    return build_frequency_index()
 
 
 def build_frequency_index() -> dict[str, int]:
