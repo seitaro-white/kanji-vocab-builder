@@ -8,7 +8,7 @@ from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
-from kanji_vocab_miner import card_processor, frequency, jisho, known_words, progress, render
+from kanji_vocab_miner import card_processor, frequency, jisho, known_words, progress, render, review
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
@@ -154,6 +154,32 @@ def add_pending_words_to_anki(pending_words: List[JishoWord], reviewed_kanji) ->
         ankiconnect.add_vocab_note_to_deck(pending_words, reviewed_kanji=reviewed_kanji)
 
     success(f"{len(pending_words)} words successfully added!")
+
+
+def handle_review_and_commit(
+    pending_words: List[JishoWord], reviewed_kanji, is_quitting: bool
+) -> tuple[List[JishoWord], bool]:
+    """
+    Run the review screen and commit selected words.
+
+    Args:
+        pending_words: Current pending words.
+        reviewed_kanji: Set of already reviewed kanji for AnkiConnect.
+        is_quitting: True if this review was triggered by the quit command.
+
+    Returns:
+        A tuple of (updated pending words, whether the main loop should continue).
+    """
+    selected = review.review_pending_words(pending_words)
+    if selected is None:
+        return pending_words, True
+
+    if not selected:
+        info("No words selected to commit.")
+        return [], not is_quitting
+
+    add_pending_words_to_anki(selected, reviewed_kanji)
+    return [], not is_quitting
 
 
 def normalized_input(prompt: str) -> str:
@@ -363,19 +389,20 @@ def run_interactive():
                 if not pending_words:
                     info("No words to commit.")
                     continue
-                click.echo(f"Committing {len(pending_words)} pending words to Anki...")
-                add_pending_words_to_anki(pending_words, reviewed_kanji)
-                pending_words.clear()  # I've known python for 5 years and have only just discovered this method!
+                pending_words, continue_loop = handle_review_and_commit(
+                    pending_words, reviewed_kanji, is_quitting=False
+                )
+                if not continue_loop:
+                    _sync_furigana_and_exit()
 
             # Quit the program
             elif user_input.lower() == "q":
                 if pending_words:
-                    confirm_add = normalized_confirm(
-                        f"You have {len(pending_words)} words pending. Add them to Anki",
-                        default=True,
+                    pending_words, continue_loop = handle_review_and_commit(
+                        pending_words, reviewed_kanji, is_quitting=True
                     )
-                    if confirm_add:
-                        add_pending_words_to_anki(pending_words, reviewed_kanji)
+                    if continue_loop:
+                        continue
                 _sync_furigana_and_exit()
 
             # You can also just enter a kanji directly

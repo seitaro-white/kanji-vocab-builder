@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
     "bs4>=0.0.2",
     "click==8.1.7",
+    "inquirerpy>=0.3.4",
     "ipykernel>=6.29.5",
     "jamdict>=0.1a11.post2",
     "jamdict-data>=1.5",
