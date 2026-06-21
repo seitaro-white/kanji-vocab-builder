@@ -2,7 +2,7 @@
 
 from typing import Callable, List, Optional
 
-from InquirerPy import inquirer
+from InquirerPy import get_style, inquirer
 from InquirerPy.base.control import Choice
 
 from kanji_vocab_miner.jisho import JishoWord
@@ -13,6 +13,10 @@ REVIEW_KEYBINDINGS = {
     "toggle-all-false": [{"key": "n"}],
     "interrupt": [{"key": "c-c"}, {"key": "escape"}, {"key": "q"}],
 }
+
+COMMIT_SYMBOL = "✓"
+DISCARD_SYMBOL = " "
+COMMIT_STYLE = get_style({"checkbox": "bold #98c379"}, style_override=False)
 
 
 def review_pending_words(
@@ -45,6 +49,9 @@ def review_pending_words(
             for word in pending_words
         ],
         keybindings=REVIEW_KEYBINDINGS,
+        enabled_symbol=COMMIT_SYMBOL,
+        disabled_symbol=DISCARD_SYMBOL,
+        style=COMMIT_STYLE,
         raise_keyboard_interrupt=True,
     )
     try:

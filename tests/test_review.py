@@ -80,3 +80,6 @@ def test_review_defaults_to_inquirerpy_checkbox(monkeypatch):
     assert len(captured["choices"]) == 1
     assert captured["choices"][0].name == "学校 (がっこう) — dummy"
     assert captured["choices"][0].enabled is True
+    assert captured["enabled_symbol"] == review.COMMIT_SYMBOL
+    assert captured["disabled_symbol"] == review.DISCARD_SYMBOL
+    assert captured["style"].dict["checkbox"] == "bold #98c379"
