@@ -435,9 +435,14 @@ def run_interactive():
                 click.echo("Invalid input. Enter 'n' (next), numbers to select, 'c' (commit), or 'q' (quit).")
 
         except KeyboardInterrupt:
-            click.echo("\nOperation cancelled.")
-            add_pending_words_to_anki(pending_words, reviewed_kanji)
-            _sync_furigana_and_exit()
+            click.echo()
+            try:
+                if not normalized_confirm("Really quit?", default=False):
+                    continue
+            except (KeyboardInterrupt, EOFError):
+                pass
+            click.echo("Goodbye!")
+            sys.exit(0)
 
         except Exception as e:
             click.echo(f"An unexpected error occurred: {str(e)}")
