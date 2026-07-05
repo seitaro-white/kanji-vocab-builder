@@ -9,13 +9,18 @@ from rich.text import Text
 from rich.rule import Rule
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner import frequency, progress
+from kanji_vocab_miner import frequency, jlpt
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
 
 from jamdict.jmdict import JMDEntry
 
 console = Console()
+
+
+def _resolve_jlpt_level(word: JishoWord) -> int:
+    """Prefer our vendored JLPT index; fall back to Jisho's live-scraped tag."""
+    return jlpt.get_level_index().get(word.expression) or word.jlpt or 0
 
 
 def welcome_message() -> None:
@@ -81,22 +86,9 @@ def words_table(
     table.add_column("Already in Deck", style="light_slate_grey")
     table.add_column("Definition", style="grey74")
 
-    jlpt_colors = {
-        5: "#209c05",
-        4: "#85e62c",
-        3: "#ebff0a",
-        2: "#f2ce02",
-        1: "#ff0a0a",
-        0: "#c3c4c7",
-    }
-
     for idx, (word, priority) in enumerate(sorted_words, 1):
-        # JLPT
-        jlpt_text = (
-            Text(f"N{word.jlpt}", style=jlpt_colors.get(word.jlpt, "#c3c4c7"))
-            if word.jlpt
-            else Text("")
-        )
+        level = _resolve_jlpt_level(word)
+        jlpt_text = Text(jlpt.level_label(level), style=jlpt.LEVEL_COLORS.get(level, jlpt.LEVEL_COLORS[0]))
         # Priority
         priority_text = Text("R", style="#00c18b") if priority else ""
         # Already in deck?
@@ -130,9 +122,14 @@ def word(word: JishoWord, freq_map: dict = None) -> None:
     freq_map = freq_map or {}
     freq_label = frequency.band_label(freq_map.get(word.expression))
     freq_suffix = f"  [dark_orange3]{freq_label}[/dark_orange3]" if freq_label else ""
+
+    level = _resolve_jlpt_level(word)
+    level_label = jlpt.level_label(level)
+    level_suffix = f"  [{jlpt.LEVEL_COLORS.get(level, jlpt.LEVEL_COLORS[0])}]{level_label}[/]" if level_label else ""
+
     console.print(
         f"  [bold green1]{word.expression}[/bold green1]  "
-        f"([cornflower_blue]{word.kana}[/cornflower_blue]){freq_suffix}"
+        f"([cornflower_blue]{word.kana}[/cornflower_blue]){freq_suffix}{level_suffix}"
     )
 
     table = Table(box=None, show_header=False)
@@ -179,68 +176,60 @@ def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
 
 
 def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
-    """Render the Jouyou-kanji and vocab-frequency coverage dashboard."""
-    # --- Kanji panel ---
-    grade_label = {
-        1: "Grade 1", 2: "Grade 2", 3: "Grade 3", 4: "Grade 4",
-        5: "Grade 5", 6: "Grade 6", "secondary": "Secondary",
-    }
+    """Render the Jouyou-kanji and JLPT vocab coverage dashboard."""
+    # --- Kanji panel: coverage bars per JLPT level ---
     kanji_body = Table.grid()
     kanji_body.add_column()
     kanji_body.add_row(_bar(kanji.known_total, kanji.total, width=30))
     kanji_body.add_row("")
     kanji_body.add_row(
         _progress_grid(
-            [(grade_label[g.grade], g.known, g.total) for g in kanji.grades]
+            [(f"N{lb.level}", lb.known, lb.total) for lb in kanji.levels]
         )
     )
     kanji_body.add_row("")
     kanji_body.add_row(
         Text(
-            f"{kanji.missing_from_deck} Jouyou kanji not yet in your deck",
+            f"{kanji.missing_from_deck} Jouyou kanji not yet in your deck  •  "
+            f"{kanji.unranked} known kanji with no JLPT level",
             style="dim italic",
         )
     )
     console.print(
         Panel(
             kanji_body,
-            title="[bold yellow]Kanji — Jouyou coverage[/bold yellow]",
+            title="[bold yellow]Kanji — JLPT coverage[/bold yellow]",
             border_style="bright_blue",
         )
     )
 
-    # --- Vocab panel: coverage bars per frequency bin (by word rank) ---
+    # --- Vocab panel: coverage bars per JLPT level ---
     pct = (vocab.placed / vocab.total_ranked * 100) if vocab.total_ranked else 0.0
 
     vocab_body = Table.grid()
     vocab_body.add_column()
-    vocab_body.add_row(_progress_grid(progress.binned_vocab(vocab.bands)))
+    vocab_body.add_row(
+        _progress_grid(
+            [(f"N{lb.level}", lb.known, lb.total) for lb in vocab.levels]
+        )
+    )
     vocab_body.add_row("")
     vocab_body.add_row(
         Text(
-            f"{vocab.placed}/{vocab.total_ranked} top-frequency words known "
-            f"({pct:.0f}%)  •  {vocab.unranked} deck words with no frequency band",
+            f"{vocab.placed}/{vocab.total_ranked} JLPT words known "
+            f"({pct:.0f}%)  •  {vocab.unranked} deck words with no JLPT level",
             style="dim italic",
         )
     )
     console.print(
         Panel(
             vocab_body,
-            title="[bold yellow]Vocab — frequency coverage[/bold yellow]",
+            title="[bold yellow]Vocab — JLPT coverage[/bold yellow]",
             border_style="bright_blue",
         )
     )
 
 
-def review_word(word, position: int, total: int) -> None:
-    """Render a single band word for the know-it review prompt."""
-    console.print(
-        f"[dim]{position}/{total}[/dim]  "
-        f"[bold green1]{word.expression}[/bold green1]  "
-        f"([cornflower_blue]{word.kana}[/cornflower_blue])"
-    )
-    if word.definition:
-        console.print(f"        [grey74]{word.definition}[/grey74]")
 
 
 def info(msg: str) -> None:

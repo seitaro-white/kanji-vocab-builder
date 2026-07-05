@@ -8,7 +8,7 @@ from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
-from kanji_vocab_miner import card_processor, frequency, jisho, known_words, progress, render, review
+from kanji_vocab_miner import card_processor, frequency, jisho, jlpt, known_words, progress, render, review
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
@@ -61,7 +61,8 @@ def fetch_word_from_word(word: str) -> Optional[JishoWord]:
         # Parse jamdict entry to JishoWord
         kanji = entry.kanji_forms[0].text
         kana = entry.kana_forms[0].text
-        jplt = 0
+        level_index = jlpt.get_level_index()
+        jplt = level_index.get(kanji) or level_index.get(kana) or 0
 
         senses = entry[:3]
         glosses = ["; ".join([i.text for i in sense.gloss]) for sense in senses]
@@ -268,7 +269,7 @@ def setup():
 
 @jisho_anki.command()
 def stats():
-    """Show Jouyou kanji and vocab frequency coverage."""
+    """Show Jouyou kanji and JLPT vocab coverage."""
     with console.status("[bold]Crunching your progress…[/bold]", spinner="dots"):
         try:
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
@@ -280,59 +281,56 @@ def stats():
 
         # Words you've marked known (but not carded) count toward coverage too.
         known_vocab = deck_vocab + list(known_words.load_known_words())
-        freq_map = frequency.build_frequency_index()
         kanji_progress = progress.kanji_coverage(reviewed_kanji, all_kanji)
-        vocab_progress = progress.vocab_coverage(known_vocab, freq_map)
+        vocab_progress = progress.vocab_coverage(known_vocab)
 
     render.progress_dashboard(kanji_progress, vocab_progress)
 
 
-@jisho_anki.command(name="review-band")
-@click.argument("band", type=int)
-def review_band(band):
-    """Review words in frequency BAND (1-48; band 1 = top 500) you haven't carded.
+@jisho_anki.command(name="review-level")
+@click.argument("level")
+def review_level(level):
+    """Review words in JLPT LEVEL (N5-N1; N5 = beginner) you haven't carded.
 
-    Shows each word not already in your deck or known list and asks whether you
-    know it. Answering yes records it (without making a flashcard) so it counts
-    toward your coverage.
+    Shows a scrollable checklist of words not already in your deck or known
+    list, alongside each word's hardest kanji and whether you've already
+    reviewed it in Anki. Toggle the ones you know with space and confirm to
+    record them (without making a flashcard) so they count toward your
+    coverage.
     """
-    if not (1 <= band <= 48):
-        error("BAND must be between 1 and 48 (band 1 = top 500 words).")
+    parsed_level = jlpt.parse_level(level)
+    if parsed_level is None:
+        error("LEVEL must be one of N5, N4, N3, N2, N1.")
         sys.exit(1)
 
-    with console.status(f"[bold]Loading band {band}…[/bold]", spinner="dots"):
+    with console.status(f"[bold]Loading N{parsed_level}…[/bold]", spinner="dots"):
         try:
             deck = set(ankiconnect.get_reviewed_vocab(include_new=True))
+            reviewed_kanji = ankiconnect.get_reviewed_kanji()
         except Exception as e:
             error(f"AnkiConnect error: {e}")
             sys.exit(1)
         already_known = known_words.load_known_words()
-        words = frequency.words_in_band(band)
+        words = jlpt.words_in_level(parsed_level)
 
     skip = deck | already_known
     unknown = [w for w in words if w.expression not in skip]
 
     if not unknown:
-        success(f"Nothing to review — all {len(words)} words in band {band} are already accounted for.")
+        success(f"Nothing to review — all {len(words)} words in N{parsed_level} are already accounted for.")
         return
 
-    info(
-        f"Band {band}: {len(unknown)} of {len(words)} words not yet known.  "
-        "[bold]y[/bold]=I know it  [bold]n[/bold]=skip  [bold]q[/bold]=quit"
-    )
+    items = review.build_level_review_items(unknown, reviewed_kanji)
+    selected = review.review_level_words(items)
+
+    if selected is None:
+        info("Review aborted — nothing marked.")
+        return
 
     marked = 0
-    for idx, word in enumerate(unknown, 1):
-        render.review_word(word, idx, len(unknown))
-        try:
-            answer = normalized_input("know it? [y/N/q]: ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            break
-        if answer == "q":
-            break
-        if answer in ("y", "yes"):
-            if known_words.add_known_word(word.expression):
-                marked += 1
+    for word in selected:
+        if known_words.add_known_word(word.expression):
+            marked += 1
 
     success(f"Marked {marked} word(s) as known — they'll now count toward your coverage.")
 

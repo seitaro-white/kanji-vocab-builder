@@ -2,7 +2,7 @@
 
 from kanji_vocab_miner import render
 from kanji_vocab_miner.jisho import JishoWord
-from kanji_vocab_miner.progress import BandCell, GradeBar, KanjiProgress, VocabProgress
+from kanji_vocab_miner.progress import KanjiProgress, LevelBar, VocabProgress
 
 
 def test_words_table_shows_frequency_band():
@@ -15,28 +15,45 @@ def test_words_table_shows_frequency_band():
     assert "top 1k" in cap.get()
 
 
+def test_words_table_shows_jlpt_level():
+    # 日本 is N3 in the vendored JLPT index, which wins over the word's own
+    # (live-scraped) jlpt=5 tag.
+    word = JishoWord(
+        expression="日本", kana="にほん", jlpt=5,
+        definitions=["Japan"], parts_of_speech=["n"],
+    )
+    with render.console.capture() as cap:
+        render.words_table([(word, False)], [])
+    assert "N3" in cap.get()
+
+
 def _sample():
     kanji = KanjiProgress(
-        grades=[
-            GradeBar(1, 80, 80),
-            GradeBar(2, 100, 160),
-            GradeBar(3, 0, 200),
-            GradeBar(4, 0, 220),
-            GradeBar(5, 0, 185),
-            GradeBar(6, 0, 181),
-            GradeBar("secondary", 0, 1110),
+        levels=[
+            LevelBar(5, 80, 300),
+            LevelBar(4, 60, 300),
+            LevelBar(3, 40, 400),
+            LevelBar(2, 0, 500),
+            LevelBar(1, 0, 464),
         ],
         known_total=180,
         total=2136,
         missing_from_deck=500,
+        unranked=12,
     )
-    # 48 bands with coverage tapering off toward rarer words.
-    bands = [BandCell(band=i + 1, known=max(0, 50 - i), size=500) for i in range(48)]
-    placed = sum(b.known for b in bands)
+    # Coverage tapering off toward harder levels.
+    levels = [
+        LevelBar(5, 400, 710),
+        LevelBar(4, 200, 663),
+        LevelBar(3, 50, 2077),
+        LevelBar(2, 0, 1731),
+        LevelBar(1, 0, 2655),
+    ]
+    placed = sum(lb.known for lb in levels)
     vocab = VocabProgress(
-        bands=bands,
+        levels=levels,
         placed=placed,
-        total_ranked=24000,
+        total_ranked=7836,
         unranked=30,
         total_deck=placed + 30,
     )
@@ -52,9 +69,9 @@ def test_progress_dashboard_renders_key_figures():
     # Kanji headline and denominator.
     assert "2136" in out
     assert "180" in out
-    # Per-grade label present.
-    assert "secondary" in out.lower()
-    # Vocab bins: a variable-width bin label, denominator, and honesty footer.
-    assert "2.5-3.5k" in out
-    assert "24000" in out or "24,000" in out
-    assert "30" in out  # unranked
+    assert "12" in out  # kanji with no JLPT level
+    # Level labels, denominator, and honesty footer.
+    assert "N5" in out
+    assert "N1" in out
+    assert "7836" in out
+    assert "30" in out  # unranked vocab

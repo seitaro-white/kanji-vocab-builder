@@ -3,7 +3,7 @@
 from click.testing import CliRunner
 
 from kanji_vocab_miner import cli
-from kanji_vocab_miner.frequency import BandWord
+from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
 
 
@@ -11,19 +11,17 @@ def _word(expression: str, kana: str = "") -> JishoWord:
     return JishoWord(expression=expression, kana=kana, jlpt=5, definitions=["dummy"])
 
 
-def test_review_band_rejects_out_of_range():
-    result = CliRunner().invoke(cli.jisho_anki, ["review-band", "99"])
+def test_review_level_rejects_invalid_level():
+    result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N99"])
     assert result.exit_code == 1
-    assert "between 1 and 48" in result.output
+    assert "N5, N4, N3, N2, N1" in result.output
 
 
-def test_review_band_marks_known_words(monkeypatch):
+def test_review_level_marks_known_words(monkeypatch):
+    words = [LevelWord(expression="猫", kana="ねこ", definition="cat"), LevelWord(expression="犬", kana="いぬ", definition="dog")]
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_vocab", lambda **k: [])
-    monkeypatch.setattr(
-        cli.frequency,
-        "words_in_band",
-        lambda band: [BandWord("猫", "ねこ", "cat"), BandWord("犬", "いぬ", "dog")],
-    )
+    monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
+    monkeypatch.setattr(cli.jlpt, "words_in_level", lambda level: words)
     monkeypatch.setattr(cli.known_words, "load_known_words", lambda *a, **k: set())
 
     added: list[str] = []
@@ -33,33 +31,30 @@ def test_review_band_marks_known_words(monkeypatch):
         lambda word, *a, **k: (added.append(word) or True),
     )
 
-    # Know the first word, skip the second.
-    answers = iter(["y", "n"])
-    monkeypatch.setattr(cli, "normalized_input", lambda prompt: next(answers))
+    # User checks 猫 (known), leaves 犬 unchecked.
+    monkeypatch.setattr(cli.review, "review_level_words", lambda items: [words[0]])
 
-    result = CliRunner().invoke(cli.jisho_anki, ["review-band", "1"])
+    result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N5"])
     assert result.exit_code == 0, result.output
     assert added == ["猫"]
     assert "Marked 1 word" in result.output
 
 
-def test_review_band_quits_early(monkeypatch):
+def test_review_level_aborts_without_marking(monkeypatch):
+    words = [LevelWord(expression="猫", kana="ねこ", definition="cat"), LevelWord(expression="犬", kana="いぬ", definition="dog")]
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_vocab", lambda **k: [])
-    monkeypatch.setattr(
-        cli.frequency,
-        "words_in_band",
-        lambda band: [BandWord("猫", "ねこ", "cat"), BandWord("犬", "いぬ", "dog")],
-    )
+    monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
+    monkeypatch.setattr(cli.jlpt, "words_in_level", lambda level: words)
     monkeypatch.setattr(cli.known_words, "load_known_words", lambda *a, **k: set())
     added: list[str] = []
     monkeypatch.setattr(
         cli.known_words, "add_known_word", lambda word, *a, **k: (added.append(word) or True)
     )
-    monkeypatch.setattr(cli, "normalized_input", lambda prompt: "q")
+    monkeypatch.setattr(cli.review, "review_level_words", lambda items: None)
 
-    result = CliRunner().invoke(cli.jisho_anki, ["review-band", "1"])
+    result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N5"])
     assert result.exit_code == 0, result.output
-    assert added == []  # quit before marking anything
+    assert added == []  # aborted before marking anything
 
 
 def test_handle_review_and_commit_aborts_keep_pending(monkeypatch):
