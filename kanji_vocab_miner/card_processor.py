@@ -24,9 +24,6 @@ def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int 
     # Get the set of Kanji that have been reviewed
     reviewed_kanji = connect.get_reviewed_kanji()
 
-    # Remove the original Kanji from the list of words
-    words = [word for word in words if word.expression != original_kanji]
-
     # Create a list of (word, priority, jlpt_rank) tuples for sorting
     sortorder = []
     for word in words:
