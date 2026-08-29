@@ -9,7 +9,7 @@ from rich.text import Text
 from rich.rule import Rule
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner import frequency, jlpt
+from kanji_vocab_miner import countdown, frequency, jlpt
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
 
@@ -31,6 +31,9 @@ def welcome_message() -> None:
     subtitle = Text("Add vocabulary to Anki", style="yellow")
     panel = Panel(banner, subtitle=subtitle, border_style="bright_blue")
     console.print(panel)
+    console.print(
+        f"[bold bright_blue]{countdown.format_jlpt_countdown()}[/bold bright_blue]"
+    )
     # tiny help line
     console.print(
         "[dim]山[/dim]: Search Kanji   •  [dim]火山[/dim]: Search Word  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"

@@ -5,6 +5,19 @@ from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.progress import KanjiProgress, LevelBar, VocabProgress
 
 
+def test_welcome_message_shows_jlpt_countdown(monkeypatch):
+    monkeypatch.setattr(
+        render.countdown,
+        "format_jlpt_countdown",
+        lambda: "JLPT N2 exam countdown: 259 days (37 weeks)",
+    )
+
+    with render.console.capture() as cap:
+        render.welcome_message()
+
+    assert "JLPT N2 exam countdown: 259 days (37 weeks)" in cap.get()
+
+
 def test_words_table_shows_frequency_band():
     word = JishoWord(
         expression="日本", kana="にほん", jlpt=5,
