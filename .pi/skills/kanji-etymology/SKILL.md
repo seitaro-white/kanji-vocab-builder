@@ -27,9 +27,11 @@ Given a kanji, produce a sourced etymology with a structured radical breakdown a
 
 ## Output format
 
-```text
-<kanji>  [on'yomi / kun'yomi]  "core meaning"
+<OUTPUT_FORMAT>
+**<kanji>**  [on'yomi / kun'yomi]  "core meaning"
 
+- 1-2 sentences explaining what the Japanese character represents conceptually
+- 1-2 sentences examples of 熟語 that contain it and demonstrate it's meaning/usage.
 
 ```RADICAL STRUCTURE
 ├─ <component>  <Japanese name> (meaning)   部首 #NN  SEMANTIC
@@ -50,13 +52,19 @@ historical form or source disagreement where relevant, explained in plain englis
 
 WANIKANI MNEMONIC: The primary wanikani provided
 
-```
+</OUTPUT_FORMAT>
 
 Example for 固:
 
-```text
-固  [コ / かた・かたい]  "firm, solid"
+<OUTPUT_EXAMPLE>
+**固**  [コ / かた・かたい]  "firm, solid"
 
+- **域** is a 形声 (phono-semantic) compound meaning a bounded or demarcated stretch of land —
+ something that becomes a distinct 領**域** (domain) or 地**域** (region).
+
+- The character appears in abstract-range words like 音**域** (vocal/tone range), 空**域** (airspace),
+ 水**域** (waters), and 可動**域** (range of motion), showing how the "bounded land" idea extends to
+ figurative spheres and extents.
 
 ```RADICAL STRUCTURE
 ├─ 囗  くにがまえ (enclosure)   部首 #31  SEMANTIC
@@ -76,11 +84,13 @@ contributes enclosure: something shut firmly inside becomes fixed or solid.
 
 WANIKANI MNEMONIC: trap the old (古) thing inside the enclosure (囗)—now it is 固い,
 locked down tight.
-```
+</OUTPUT_EXAMPLE>
+
 
 ## Rules
 
 - Never guess; fetch Wiktionary directly before answering.
+- The Kanji itself whenever in the output should be bolded ie with double asterix **
 - Always include definitions, on/kun readings, structure, classification, etymology, mnemonic, and direct source links.
 - Distinguish visible composition, dictionary radical, and historical derivation.
 - If the user asks why a reading or radical occurs, answer that question directly.
