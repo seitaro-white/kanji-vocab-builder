@@ -8,8 +8,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule
 
-from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner import countdown, frequency, jlpt
+from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
 
@@ -36,12 +36,16 @@ def welcome_message() -> None:
     )
     # tiny help line
     console.print(
-        "[dim]山[/dim]: Search Kanji   •  [dim]火山[/dim]: Search Word  •  [dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
+        "[dim]山[/dim]: Search Kanji  •  [dim]火山[/dim]: Search Word  •  "
+        "[dim]n[/dim]: current Anki card  •  [dim]a[/dim]: move Kanji to top  •  "
+        "[dim]c[/dim]: commit  •  [dim]q[/dim]: quit\n"
     )
 
 
-def kanji_summary(summary: KanjiSummary) -> None:
-    """Render a short summary panel for the current kanji."""
+def kanji_summary(
+    summary: KanjiSummary, review_status: KanjiReviewStatus
+) -> None:
+    """Render a short summary panel for the current kanji and its Anki state."""
     jlpt_label = f"N{summary.jlpt}" if summary.jlpt else "—"
     readings_lines = []
     if summary.kun_readings:
@@ -53,7 +57,15 @@ def kanji_summary(summary: KanjiSummary) -> None:
     table.add_column(justify="left", style="bold chartreuse3", no_wrap=True)
     table.add_column()
 
+    status_labels = {
+        KanjiReviewStatus.REVIEWED: Text("Reviewed", style="bold green"),
+        KanjiReviewStatus.NOT_REVIEWED: Text("Not reviewed", style="bold yellow"),
+        KanjiReviewStatus.NOT_IN_DECK: Text("Not in deck", style="bold red"),
+        KanjiReviewStatus.UNKNOWN: Text("Unknown", style="bold grey62"),
+    }
+
     table.add_row("JLPT", jlpt_label)
+    table.add_row("Review status", status_labels[review_status])
     for label, reading in readings_lines:
         table.add_row(label, reading)
     meanings_text = "; ".join(summary.meanings[:3]) or "—"

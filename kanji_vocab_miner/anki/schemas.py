@@ -1,9 +1,11 @@
 """ Schemas for Anki Cards and Decks"""
 
-from pydantic import BaseModel, Field
-from typing import TypeVar, List, Generic, Optional # Added Generic, TypeVar
+from typing import Generic, List, Optional, TypeVar
 
-FieldType = TypeVar('FieldType', bound=BaseModel)
+from pydantic import BaseModel, Field
+
+FieldType = TypeVar("FieldType", bound=BaseModel)
+
 
 class AnkiCard(BaseModel, Generic[FieldType]):
     # --- Standard Anki Fields ---

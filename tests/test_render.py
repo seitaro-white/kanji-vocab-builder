@@ -1,7 +1,10 @@
 """Smoke tests for the progress dashboard rendering."""
 
+import pytest
+
 from kanji_vocab_miner import render
-from kanji_vocab_miner.jisho import JishoWord
+from kanji_vocab_miner.review_status import KanjiReviewStatus
+from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.progress import KanjiProgress, LevelBar, VocabProgress
 
 
@@ -16,6 +19,32 @@ def test_welcome_message_shows_jlpt_countdown(monkeypatch):
         render.welcome_message()
 
     assert "JLPT N2 exam countdown: 259 days (37 weeks)" in cap.get()
+
+
+@pytest.mark.parametrize(
+    ("status", "label"),
+    [
+        (KanjiReviewStatus.REVIEWED, "Reviewed"),
+        (KanjiReviewStatus.NOT_REVIEWED, "Not reviewed"),
+        (KanjiReviewStatus.NOT_IN_DECK, "Not in deck"),
+        (KanjiReviewStatus.UNKNOWN, "Unknown"),
+    ],
+)
+def test_kanji_summary_shows_review_status(status, label):
+    summary = KanjiSummary(
+        kanji="学",
+        meanings=["study"],
+        kun_readings=["まな.ぶ"],
+        on_readings=["ガク"],
+        jlpt=5,
+    )
+
+    with render.console.capture() as cap:
+        render.kanji_summary(summary, status)
+
+    output = cap.get()
+    assert "Review status" in output
+    assert label in output
 
 
 def test_words_table_shows_frequency_band():

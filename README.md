@@ -56,10 +56,11 @@ uv tool upgrade kanji-vocab-miner
 Make sure Anki is running and run `kanji-vocab-miner` to start the interactive session:
 
 **Commands:**
-- `n` - Fetch next kanji from your Anki deck
+- `n` - Look up the kanji on the card currently open in Anki Reviewer
+- `a` - Move the most recently looked-up kanji card to the top of its Anki deck
 - `c` - Commit selected words to Anki
 - `q` - Quit the program
-- Type a kanji directly (e.g., `食`) - Search for words containing that kanji
+- Type a kanji directly (e.g., `食`) - Search for words containing that kanji and show whether its Anki card has been reviewed
 - Type `@word` (e.g., `@食べる`) - Look up a specific word on Jisho
 - When in word selection mode, enter numbers or ranges (e.g., `1 3 5` or `1-5`) to select words to add
 

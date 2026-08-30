@@ -12,6 +12,7 @@ from kanji_vocab_miner import card_processor, frequency, jisho, jlpt, known_word
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
+from kanji_vocab_miner.review_status import KanjiReviewStatus
 
 from jamdict import Jamdict
 from kanji_vocab_miner.render import console, info, success, error
@@ -33,13 +34,23 @@ def fetch_words_from_kanji(kanji: str) -> List[JishoWord]:
 
     kanji_summary = jisho.fetch_kanji_summary(kanji)
 
+    try:
+        review_status = ankiconnect.get_kanji_review_status(kanji)
+    except Exception as e:
+        review_status = KanjiReviewStatus.UNKNOWN
+        console.print(
+            f"Warning: Could not retrieve Anki review status: {e}",
+            style="yellow",
+            markup=False,
+        )
+
+    if kanji_summary:
+        render.kanji_summary(kanji_summary, review_status)
+
     words: List[JishoWord] = jisho.search_words_containing_kanji(kanji)
     if not words:
         click.echo("No words found containing this Kanji.")
         return []
-
-    if kanji_summary:
-        render.kanji_summary(kanji_summary)
 
     # Get list of already reviewed words from Anki
     reviewed_vocab = ankiconnect.get_reviewed_vocab()
@@ -131,10 +142,14 @@ def handle_next_card() -> Optional[str]:
     """Handle the 'n' command to fetch the next card from Anki."""
     with console.status("[bold]Fetching current Kanji from Anki…[/bold]", spinner="dots"):
         try:
-            card: KanjiCard = ankiconnect.get_current_card()
+            card: Optional[KanjiCard] = ankiconnect.get_current_card()
         except Exception as e:
             error(f"AnkiConnect error: {e}")
             return None
+
+    if card is None:
+        error("No Kanji card is open in Anki.")
+        return None
 
     kanji = card.fields.Kanji.value
     if not kanji:
@@ -210,40 +225,23 @@ def get_user_input(pending_count: int) -> str:
     return unicodedata.normalize("NFKC", pt_prompt(prompt_text))
 
 
-def prompt_and_reposition_kanji(kanji: str) -> bool:
-    """
-    Prompts the user to reposition a Kanji card and performs the action if confirmed.
-
-    Args:
-        kanji: The Kanji character to reposition.
-
-    Returns:
-        True if the card was repositioned, False otherwise.
-    """
-    confirm_reposition = normalized_confirm(
-        f"Do you want to reposition the Kanji card for '{kanji}' to the top of its deck?",
-        default=False,
-    )
-
-    if confirm_reposition:
-        with console.status(f"[bold]Repositioning Kanji card for '{kanji}'…[/bold]", spinner="dots"):
-            try:
-                card_id = ankiconnect.find_kanji_card_id(kanji)
-                if card_id:
-                    ankiconnect.reposition_card_to_top(card_id)
-                    success(f"Kanji card for '{kanji}' repositioned to top.")
-
-                    return True
-                else:
-                    # Escape the kanji before passing it to error
-                    error(f"Could not find Kanji card for '{kanji}' in Anki.")
-                    return False
-            except Exception as e:
-                # Escape the exception message
-                escaped_error_msg = (str(e))
-                error(f"Failed to reposition Kanji card: {escaped_error_msg}")
+def reposition_kanji(kanji: str) -> bool:
+    """Reposition the first matching kanji card to the top of its deck."""
+    with console.status(
+        f"[bold]Repositioning Kanji card for '{kanji}'…[/bold]", spinner="dots"
+    ):
+        try:
+            card_id = ankiconnect.find_kanji_card_id(kanji)
+            if card_id is None:
+                error(f"Could not find Kanji card for '{kanji}' in Anki.")
                 return False
-    return False
+
+            ankiconnect.reposition_card_to_top(card_id)
+            success(f"Kanji card for '{kanji}' repositioned to top.")
+            return True
+        except Exception as e:
+            error(f"Failed to reposition Kanji card: {e}")
+            return False
 
 
 @click.group(invoke_without_command=True)
@@ -365,6 +363,7 @@ def run_interactive():
 
     displayed_words = []  # Store the last displayed word list
     pending_words = []  # Store selected words to add to Anki later
+    active_kanji: Optional[str] = None  # Latest successfully retrieved kanji
 
     while True:
         try:
@@ -372,9 +371,18 @@ def run_interactive():
 
             # Fetch new card and display words
             if user_input.lower() == "n":
+                active_kanji = None
                 kanji = handle_next_card()
                 if kanji:
                     displayed_words = fetch_words_from_kanji(kanji)
+                    active_kanji = kanji
+
+            # Reposition the latest successfully retrieved kanji card
+            elif user_input == "a":
+                if active_kanji is None:
+                    info("Retrieve a Kanji before using 'a' to move it to the top.")
+                else:
+                    reposition_kanji(active_kanji)
 
             # Select words to add to pending list
             elif any(c.isdigit() for c in user_input):
@@ -405,11 +413,11 @@ def run_interactive():
 
             # You can also just enter a kanji directly
             elif is_kanji(user_input):
+                active_kanji = None
                 kanji = user_input
                 with console.status(f"Searching for words containing [yellow2]{kanji}[/yellow2]…", spinner="dots"):
                     displayed_words = fetch_words_from_kanji(kanji)
-
-                prompt_and_reposition_kanji(kanji)
+                active_kanji = kanji
 
             # Or look up a single word
             elif is_kotoba(user_input):
@@ -430,7 +438,10 @@ def run_interactive():
 
 
             else:
-                click.echo("Invalid input. Enter 'n' (next), numbers to select, 'c' (commit), or 'q' (quit).")
+                click.echo(
+                    "Invalid input. Enter 'n' (current Anki card), 'a' (move Kanji "
+                    "to top), numbers to select, 'c' (commit), or 'q' (quit)."
+                )
 
         except KeyboardInterrupt:
             click.echo()

@@ -1,10 +1,14 @@
+from types import SimpleNamespace
+
 import pytest
 import requests
 
 from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import JishoWord # Added import
 
+@pytest.mark.integration
 def test_ping_anki():
     """
     Test if Anki is running and AnkiConnect is available.
@@ -67,6 +71,7 @@ def test_get_current_kanji():
     assert 0x4E00 <= ord(kanjichar) <= 0x9FFF
 
 
+@pytest.mark.integration
 def test_get_reviewed_kanji():
     """
     Test getting all reviewed kanji from Anki.
@@ -90,6 +95,7 @@ def test_get_reviewed_kanji():
 
     print(f"Successfully retrieved {len(kanji_set)} reviewed kanji")
 
+@pytest.mark.integration
 def test_get_reviewed_vocab():
     """
     Test getting all reviewed vocabulary from Anki.
@@ -134,6 +140,41 @@ def test_get_all_kanji_ignores_review_state(monkeypatch):
     assert connect.get_all_kanji() == {"学", "校"}
 
 
+def test_get_kanji_review_status_uses_all_duplicate_cards(monkeypatch):
+    """Any duplicate with at least one review makes the kanji reviewed."""
+    monkeypatch.setattr(
+        connect,
+        "get_config",
+        lambda: SimpleNamespace(kanji_deck=SimpleNamespace(name="Kanji Deck")),
+    )
+
+    def fake_send(action, **params):
+        if action == "findCards":
+            assert params["query"] == 'deck:"Kanji Deck" "Kanji:学"'
+            return [10, 20]
+        if action == "cardsInfo":
+            assert params["cards"] == [10, 20]
+            return [{"reps": 0}, {"reps": 3}]
+        raise AssertionError(f"unexpected action {action}")
+
+    monkeypatch.setattr(connect, "send_request", fake_send)
+
+    assert connect.get_kanji_review_status("学") == KanjiReviewStatus.REVIEWED
+
+
+def test_get_kanji_review_status_distinguishes_new_and_missing(monkeypatch):
+    monkeypatch.setattr(
+        connect,
+        "get_config",
+        lambda: SimpleNamespace(kanji_deck=SimpleNamespace(name="Kanji Deck")),
+    )
+    responses = iter([[10], [{"reps": 0}], []])
+    monkeypatch.setattr(connect, "send_request", lambda *args, **kwargs: next(responses))
+
+    assert connect.get_kanji_review_status("新") == KanjiReviewStatus.NOT_REVIEWED
+    assert connect.get_kanji_review_status("無") == KanjiReviewStatus.NOT_IN_DECK
+
+
 def test_get_reviewed_vocab_seen_only_adds_filter(monkeypatch):
     """include_new=False restricts to cards seen at least once (-is:new)."""
     captured = {}
@@ -165,6 +206,7 @@ def kanji_card_with_restore():
     connect.send_request("setSpecificValueOfCard", card=card_id, keys=["due"], newValues=[original_due])
 
 
+@pytest.mark.integration
 def test_reposition_card_to_top(kanji_card_with_restore):
     """Test that reposition_card_to_top moves a card to due=0 in its queue."""
     card_id, original_due = kanji_card_with_restore
@@ -173,6 +215,7 @@ def test_reposition_card_to_top(kanji_card_with_restore):
     assert info[0]["due"] == 0
 
 
+@pytest.mark.integration
 def test_reposition_restores_correctly(kanji_card_with_restore):
     """Sanity check: the fixture restore actually works (due goes back to original)."""
     card_id, original_due = kanji_card_with_restore
@@ -183,12 +226,14 @@ def test_reposition_restores_correctly(kanji_card_with_restore):
     assert original_due != 0  # Confirm the card wasn't already at 0
 
 
+@pytest.mark.integration
 def test_find_kanji_card_id_returns_none_for_unknown():
     """Test that find_kanji_card_id returns None for a character not in the deck."""
     result = connect.find_kanji_card_id("X")
     assert result is None
 
 
+@pytest.mark.integration
 def test_prepare_note():
     """
     Test the prepare_note function for creating Anki note data.

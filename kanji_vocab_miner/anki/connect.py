@@ -7,6 +7,7 @@ import re
 # Update import to avoid circular dependency
 from kanji_vocab_miner.utils import is_kanji
 from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
 from kanji_vocab_miner.config import (
     load_config,
@@ -117,12 +118,12 @@ def get_kanji_card_info(card_id: int) -> KanjiCard:
 
 
 # High Level
-def get_current_card() -> Optional[Dict[str, Any]]:
+def get_current_card() -> Optional[KanjiCard]:
     """
     Get information about the current card being reviewed.
 
     Returns:
-        Dictionary with card information or None if no card is being reviewed
+        The current KanjiCard, or None if no card is being reviewed
     """
 
     result = send_request("guiCurrentCard")
@@ -163,32 +164,38 @@ def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
     return kanji_list
 
 
+def find_kanji_card_ids(kanji: str) -> List[int]:
+    """Find all matching card IDs in the configured kanji deck."""
+    kanji_deck = get_config().kanji_deck.name
+    query = f'deck:"{kanji_deck}" "Kanji:{kanji}"'
+    return send_request("findCards", query=query) or []
+
+
 def find_kanji_card_id(kanji: str) -> Optional[int]:
-    """
-    Find the card ID for a given Kanji in the configured kanji deck.
-
-    Args:
-        kanji: The Kanji character to search for.
-
-    Returns:
-        The card ID if found, otherwise None.
-    """
+    """Find the first matching card ID in the configured kanji deck."""
     try:
-        # Search for cards in the specific deck with the Kanji in the "Kanji" field
-        kanji_deck = get_config().kanji_deck.name
-        query = f'deck:"{kanji_deck}" "Kanji:{kanji}"'
-        card_ids = send_request("findCards", query=query)
-
-        if not card_ids:
-            return None
-
-        # If multiple cards are found (e.g., duplicates), just take the first one.
-        return card_ids[0]
-
+        card_ids = find_kanji_card_ids(kanji)
+        return card_ids[0] if card_ids else None
     except Exception as e:
-        # If there's any error, just return None rather than breaking the app flow
+        # Preserve the non-fatal behavior used by the interactive reposition command.
         print(f"Warning: Failed to find Kanji card for '{kanji}': {str(e)}")
         return None
+
+
+def get_kanji_review_status(kanji: str) -> KanjiReviewStatus:
+    """Return whether any matching kanji card has been reviewed at least once.
+
+    Errors intentionally propagate so the CLI can distinguish an unavailable
+    Anki connection from a kanji that is genuinely absent from the deck.
+    """
+    card_ids = find_kanji_card_ids(kanji)
+    if not card_ids:
+        return KanjiReviewStatus.NOT_IN_DECK
+
+    cards_info = send_request("cardsInfo", cards=card_ids)
+    if any((card.get("reps") or 0) > 0 for card in cards_info):
+        return KanjiReviewStatus.REVIEWED
+    return KanjiReviewStatus.NOT_REVIEWED
 
 
 def reposition_card_to_top(card_id: int) -> None:

@@ -1,8 +1,11 @@
 """Tests for CLI commands that don't require a live Anki."""
 
+import pytest
 from click.testing import CliRunner
 
-from kanji_vocab_miner import cli
+from kanji_vocab_miner import cli, setup
+from kanji_vocab_miner.review_status import KanjiReviewStatus
+from kanji_vocab_miner.jisho import KanjiSummary
 from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
 
@@ -87,6 +90,89 @@ def test_handle_review_and_commit_commits_selected_and_exits_on_quit(monkeypatch
     assert pending == []
     assert continue_loop is False
     assert committed == [words[0]]
+
+
+def test_fetch_words_from_kanji_renders_unknown_status_on_anki_error(monkeypatch):
+    summary = KanjiSummary(
+        kanji="学",
+        meanings=["study"],
+        kun_readings=[],
+        on_readings=["ガク"],
+        jlpt=5,
+    )
+    rendered_statuses = []
+    monkeypatch.setattr(cli.jisho, "fetch_kanji_summary", lambda kanji: summary)
+    monkeypatch.setattr(cli.jisho, "search_words_containing_kanji", lambda kanji: [])
+    monkeypatch.setattr(
+        cli.ankiconnect,
+        "get_kanji_review_status",
+        lambda kanji: (_ for _ in ()).throw(RuntimeError("Anki unavailable")),
+    )
+    monkeypatch.setattr(
+        cli.render,
+        "kanji_summary",
+        lambda kanji_summary, status: rendered_statuses.append(status),
+    )
+
+    assert cli.fetch_words_from_kanji("学") == []
+    assert rendered_statuses == [KanjiReviewStatus.UNKNOWN]
+
+
+def test_reposition_kanji_moves_first_matching_card_without_prompt(monkeypatch):
+    moved = []
+    monkeypatch.setattr(cli.ankiconnect, "find_kanji_card_id", lambda kanji: 42)
+    monkeypatch.setattr(
+        cli.ankiconnect, "reposition_card_to_top", lambda card_id: moved.append(card_id)
+    )
+
+    assert cli.reposition_kanji("学") is True
+    assert moved == [42]
+
+
+@pytest.mark.parametrize(("inputs", "expected_kanji"), [(["学", "a", "q"], "学"), (["n", "a", "q"], "校")])
+def test_interactive_a_targets_latest_direct_or_anki_kanji(
+    monkeypatch, inputs, expected_kanji
+):
+    commands = iter(inputs)
+    moved = []
+    monkeypatch.setattr(cli.render, "welcome_message", lambda: None)
+    monkeypatch.setattr(setup, "validate_prerequisites", lambda: (True, []))
+    monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
+    monkeypatch.setattr(cli, "get_user_input", lambda pending_count: next(commands))
+    monkeypatch.setattr(cli, "handle_next_card", lambda: "校")
+    monkeypatch.setattr(cli, "fetch_words_from_kanji", lambda kanji: [])
+    monkeypatch.setattr(cli, "reposition_kanji", lambda kanji: moved.append(kanji))
+    monkeypatch.setattr(
+        cli, "_sync_furigana_and_exit", lambda: (_ for _ in ()).throw(SystemExit())
+    )
+
+    with pytest.raises(SystemExit):
+        cli.run_interactive()
+
+    assert moved == [expected_kanji]
+
+
+def test_failed_lookup_disables_a(monkeypatch):
+    commands = iter(["学", "校", "a", "q"])
+    moved = []
+    monkeypatch.setattr(cli.render, "welcome_message", lambda: None)
+    monkeypatch.setattr(setup, "validate_prerequisites", lambda: (True, []))
+    monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
+    monkeypatch.setattr(cli, "get_user_input", lambda pending_count: next(commands))
+    monkeypatch.setattr(
+        cli,
+        "fetch_words_from_kanji",
+        lambda kanji: [] if kanji == "学" else (_ for _ in ()).throw(RuntimeError()),
+    )
+    monkeypatch.setattr(cli, "reposition_kanji", lambda kanji: moved.append(kanji))
+    monkeypatch.setattr(
+        cli, "_sync_furigana_and_exit", lambda: (_ for _ in ()).throw(SystemExit())
+    )
+
+    with pytest.raises(SystemExit):
+        cli.run_interactive()
+
+    assert moved == []
 
 
 def test_handle_review_and_commit_commits_selected_and_continues_on_commit(monkeypatch):
