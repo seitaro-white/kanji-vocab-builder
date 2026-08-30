@@ -11,7 +11,12 @@ from rich.rule import Rule
 from kanji_vocab_miner import countdown, frequency, jlpt
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
-from kanji_vocab_miner.progress import KanjiProgress, VocabProgress
+from kanji_vocab_miner.progress import (
+    KanjiProgress,
+    ManualProgress,
+    ManualProgressBar,
+    VocabProgress,
+)
 
 from jamdict.jmdict import JMDEntry
 
@@ -190,8 +195,32 @@ def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
     return grid
 
 
-def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
-    """Render the N2-target kanji and full JLPT vocab coverage dashboard."""
+def _manual_panel(
+    title: str, bars: tuple[ManualProgressBar, ...]
+) -> None:
+    """Render one manually tracked subject's aggregate and detail bars."""
+    aggregate = bars[0]
+    details = bars[1:]
+    body = Table.grid()
+    body.add_column()
+    body.add_row(_bar(aggregate.known, aggregate.total, width=30))
+    body.add_row("")
+    body.add_row(
+        _progress_grid([(bar.label, bar.known, bar.total) for bar in details])
+    )
+    console.print(
+        Panel(
+            body,
+            title=f"[bold yellow]{title}[/bold yellow]",
+            border_style="bright_blue",
+        )
+    )
+
+
+def progress_dashboard(
+    kanji: KanjiProgress, manual: ManualProgress, vocab: VocabProgress
+) -> None:
+    """Render Kanji, Reading, Grammar, and JLPT vocab coverage panels."""
     # --- Kanji panel: coverage bars per JLPT level ---
     kanji_body = Table.grid()
     kanji_body.add_column()
@@ -217,6 +246,9 @@ def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
             border_style="bright_blue",
         )
     )
+
+    _manual_panel("Reading — textbook coverage", manual.reading)
+    _manual_panel("Grammar — textbook coverage", manual.grammar)
 
     # --- Vocab panel: coverage bars per JLPT level ---
     pct = (vocab.placed / vocab.total_ranked * 100) if vocab.total_ranked else 0.0

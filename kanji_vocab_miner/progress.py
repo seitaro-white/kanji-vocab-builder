@@ -10,6 +10,20 @@ LEVEL_ORDER: list[int] = [5, 4, 3, 2, 1]
 # The current kanji study goal is JLPT N2 and everything below it.
 KANJI_TARGET_LEVELS: list[int] = [5, 4, 3, 2]
 
+# Manually tracked textbook progress. Values are the section totals.
+READING_MAXIMA: dict[str, int] = {
+    "reading_i": 41,
+    "reading_ii": 29,
+    "reading_iii": 11,
+}
+GRAMMAR_MAXIMA: dict[str, int] = {
+    "grammar_i": 10,
+    "grammar_ii": 11,
+    "grammar_iii": 5,
+}
+READING_TOTAL = sum(READING_MAXIMA.values())
+GRAMMAR_TOTAL = sum(GRAMMAR_MAXIMA.values())
+
 
 @dataclass
 class LevelBar:
@@ -34,6 +48,71 @@ class KanjiProgress:
     total: int  # all kanji within the N2 target
     missing_from_deck: int  # target kanji not present in the kanji deck
     unranked: int  # reviewed jouyou kanji with no JLPT level in the source data
+
+
+@dataclass(frozen=True)
+class ManualProgressCounts:
+    """Completed section counts read from the manual progress file."""
+
+    reading_i: int = 0
+    reading_ii: int = 0
+    reading_iii: int = 0
+    grammar_i: int = 0
+    grammar_ii: int = 0
+    grammar_iii: int = 0
+
+
+@dataclass(frozen=True)
+class ManualProgressBar:
+    """A labelled bar for a manually tracked textbook section."""
+
+    label: str
+    known: int
+    total: int
+
+
+@dataclass(frozen=True)
+class ManualProgress:
+    """Aggregated and per-part Reading and Grammar progress.
+
+    Each tuple contains the aggregate bar first, followed by I, II, and III
+    detail bars.  Keeping the display order in the calculation result makes
+    the dashboard deterministic while leaving rendering concerns in render.py.
+    """
+
+    reading: tuple[ManualProgressBar, ...]
+    grammar: tuple[ManualProgressBar, ...]
+
+
+def manual_coverage(counts: ManualProgressCounts) -> ManualProgress:
+    """Calculate aggregate and detail bars for manual textbook progress.
+
+    The six section counts are independent: aggregate values are calculated
+    from the sections and are not treated as an additional input.
+    """
+    reading = (
+        ManualProgressBar(
+            label="Total",
+            known=sum(getattr(counts, key) for key in READING_MAXIMA),
+            total=READING_TOTAL,
+        ),
+        ManualProgressBar("I", counts.reading_i, READING_MAXIMA["reading_i"]),
+        ManualProgressBar("II", counts.reading_ii, READING_MAXIMA["reading_ii"]),
+        ManualProgressBar("III", counts.reading_iii, READING_MAXIMA["reading_iii"]),
+    )
+    grammar = (
+        ManualProgressBar(
+            label="Total",
+            known=sum(getattr(counts, key) for key in GRAMMAR_MAXIMA),
+            total=GRAMMAR_TOTAL,
+        ),
+        ManualProgressBar("I", counts.grammar_i, GRAMMAR_MAXIMA["grammar_i"]),
+        ManualProgressBar("II", counts.grammar_ii, GRAMMAR_MAXIMA["grammar_ii"]),
+        ManualProgressBar(
+            "III", counts.grammar_iii, GRAMMAR_MAXIMA["grammar_iii"]
+        ),
+    )
+    return ManualProgress(reading=reading, grammar=grammar)
 
 
 def kanji_coverage(reviewed_kanji: set[str], all_deck_kanji: set[str]) -> KanjiProgress:

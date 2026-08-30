@@ -1,6 +1,7 @@
 """Tests for the pure progress-calculation logic."""
 
 from kanji_vocab_miner import jlpt, kanji_jlpt, progress
+from kanji_vocab_miner.progress import ManualProgressCounts
 
 
 def test_kanji_coverage_counts_only_jouyou():
@@ -58,6 +59,34 @@ def test_kanji_coverage_missing_from_deck():
     deck = {"一", "二"}
     result = progress.kanji_coverage(reviewed_kanji=set(), all_deck_kanji=deck)
     assert result.missing_from_deck == result.total - 2
+
+
+def test_manual_coverage_aggregates_independent_section_counts():
+    counts = ManualProgressCounts(
+        reading_i=10,
+        reading_ii=20,
+        reading_iii=5,
+        grammar_i=4,
+        grammar_ii=6,
+        grammar_iii=2,
+    )
+
+    result = progress.manual_coverage(counts)
+
+    assert [bar.label for bar in result.reading] == ["Total", "I", "II", "III"]
+    assert [bar.label for bar in result.grammar] == ["Total", "I", "II", "III"]
+    assert (result.reading[0].known, result.reading[0].total) == (35, 81)
+    assert [(bar.known, bar.total) for bar in result.reading[1:]] == [
+        (10, 41),
+        (20, 29),
+        (5, 11),
+    ]
+    assert (result.grammar[0].known, result.grammar[0].total) == (12, 26)
+    assert [(bar.known, bar.total) for bar in result.grammar[1:]] == [
+        (4, 10),
+        (6, 11),
+        (2, 5),
+    ]
 
 
 def test_vocab_coverage_per_level():

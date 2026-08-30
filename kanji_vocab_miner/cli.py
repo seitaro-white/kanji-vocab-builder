@@ -8,7 +8,17 @@ from prompt_toolkit.formatted_text import HTML
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
-from kanji_vocab_miner import card_processor, frequency, jisho, jlpt, known_words, progress, render, review
+from kanji_vocab_miner import (
+    card_processor,
+    frequency,
+    jisho,
+    jlpt,
+    known_words,
+    manual_progress,
+    progress,
+    render,
+    review,
+)
 from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
@@ -267,7 +277,7 @@ def setup():
 
 @jisho_anki.command()
 def stats():
-    """Show N2-target kanji and JLPT vocab coverage."""
+    """Show kanji, Reading, Grammar, and JLPT vocab coverage."""
     with console.status("[bold]Crunching your progress…[/bold]", spinner="dots"):
         try:
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
@@ -277,12 +287,15 @@ def stats():
             error(f"AnkiConnect error: {e}")
             sys.exit(1)
 
+        manual_counts = manual_progress.load_manual_progress()
+
         # Words you've marked known (but not carded) count toward coverage too.
         known_vocab = deck_vocab + list(known_words.load_known_words())
         kanji_progress = progress.kanji_coverage(reviewed_kanji, all_kanji)
+        textbook_progress = progress.manual_coverage(manual_counts)
         vocab_progress = progress.vocab_coverage(known_vocab)
 
-    render.progress_dashboard(kanji_progress, vocab_progress)
+    render.progress_dashboard(kanji_progress, textbook_progress, vocab_progress)
 
 
 @jisho_anki.command(name="review-level")

@@ -64,6 +64,32 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 - Type `@word` (e.g., `@食べる`) - Look up a specific word on Jisho
 - When in word selection mode, enter numbers or ranges (e.g., `1 3 5` or `1-5`) to select words to add
 
+### Progress dashboard
+
+Run `kanji-vocab-miner stats` to show your Kanji, Reading, Grammar, and
+vocabulary progress. The dashboard combines Anki data with the manually
+tracked textbook sections in `manual_progress.toml`.
+
+For now, the file is read from the directory where you run the command. When
+working from this repository, edit the included `manual_progress.toml` and run
+`uv run kanji-vocab-miner stats` from the repository root.
+
+The file contains:
+
+```toml
+reading_i = 0
+reading_ii = 0
+reading_iii = 0
+grammar_i = 0
+grammar_ii = 0
+grammar_iii = 0
+```
+
+Each value is an independent count of completed sections. Reading has totals
+of I=41, II=29 (book sections 42–70), and III=11, for an aggregate of 81.
+Grammar has totals of I=10, II=11 (book sections 11–21), and III=5 (book
+sections 22–26), for an aggregate of 26.
+
 
 ## Credits
 

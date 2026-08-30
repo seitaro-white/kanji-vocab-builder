@@ -8,10 +8,36 @@ from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import KanjiSummary
 from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
+from kanji_vocab_miner.progress import ManualProgressCounts
 
 
 def _word(expression: str, kana: str = "") -> JishoWord:
     return JishoWord(expression=expression, kana=kana, jlpt=5, definitions=["dummy"])
+
+
+def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
+    monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: {"一"})
+    monkeypatch.setattr(cli.ankiconnect, "get_all_kanji", lambda: {"一"})
+    monkeypatch.setattr(
+        cli.ankiconnect, "get_reviewed_vocab", lambda **kwargs: ["猫"]
+    )
+    counts = ManualProgressCounts(reading_i=1, grammar_i=2)
+    monkeypatch.setattr(cli.manual_progress, "load_manual_progress", lambda: counts)
+    monkeypatch.setattr(cli.known_words, "load_known_words", lambda: set())
+
+    rendered = []
+    monkeypatch.setattr(
+        cli.render,
+        "progress_dashboard",
+        lambda kanji, manual, vocab: rendered.append((kanji, manual, vocab)),
+    )
+
+    result = CliRunner().invoke(cli.jisho_anki, ["stats"])
+
+    assert result.exit_code == 0, result.output
+    assert len(rendered) == 1
+    assert rendered[0][1].reading[1].known == 1
+    assert rendered[0][1].grammar[1].known == 2
 
 
 def test_review_level_rejects_invalid_level():

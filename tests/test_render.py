@@ -5,7 +5,13 @@ import pytest
 from kanji_vocab_miner import render
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
-from kanji_vocab_miner.progress import KanjiProgress, LevelBar, VocabProgress
+from kanji_vocab_miner.progress import (
+    KanjiProgress,
+    LevelBar,
+    ManualProgressCounts,
+    VocabProgress,
+    manual_coverage,
+)
 
 
 def test_welcome_message_shows_jlpt_countdown(monkeypatch):
@@ -104,8 +110,9 @@ def _sample():
 
 def test_progress_dashboard_renders_key_figures():
     kanji, vocab = _sample()
+    manual = manual_coverage(ManualProgressCounts())
     with render.console.capture() as cap:
-        render.progress_dashboard(kanji, vocab)
+        render.progress_dashboard(kanji, manual, vocab)
     out = cap.get()
 
     # Kanji headline and N2-target denominator.
@@ -118,3 +125,37 @@ def test_progress_dashboard_renders_key_figures():
     assert "N1" in out
     assert "7836" in out
     assert "30" in out  # unranked vocab
+
+
+def test_progress_dashboard_renders_manual_panels_in_order():
+    kanji, vocab = _sample()
+    manual = manual_coverage(
+        ManualProgressCounts(
+            reading_i=1,
+            reading_ii=2,
+            reading_iii=3,
+            grammar_i=4,
+            grammar_ii=5,
+            grammar_iii=1,
+        )
+    )
+
+    with render.console.capture() as cap:
+        render.progress_dashboard(kanji, manual, vocab)
+    out = cap.get()
+
+    panel_order = [
+        out.index("Kanji — N2 target coverage"),
+        out.index("Reading — textbook coverage"),
+        out.index("Grammar — textbook coverage"),
+        out.index("Vocab — JLPT coverage"),
+    ]
+    assert panel_order == sorted(panel_order)
+    assert "6/81" in out
+    assert "1/41" in out
+    assert "2/29" in out
+    assert "3/11" in out
+    assert "10/26" in out
+    assert "4/10" in out
+    assert "5/11" in out
+    assert "1/5" in out
