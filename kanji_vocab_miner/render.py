@@ -198,15 +198,9 @@ def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
 def _manual_panel(
     title: str, bars: tuple[ManualProgressBar, ...]
 ) -> None:
-    """Render one manually tracked subject's aggregate and detail bars."""
-    aggregate = bars[0]
-    details = bars[1:]
-    body = Table.grid()
-    body.add_column()
-    body.add_row(_bar(aggregate.known, aggregate.total, width=30))
-    body.add_row("")
-    body.add_row(
-        _progress_grid([(bar.label, bar.known, bar.total) for bar in details])
+    """Render one manually tracked subject's section breakdown."""
+    body = _progress_grid(
+        [(bar.label, bar.known, bar.total) for bar in bars[1:]]
     )
     console.print(
         Panel(
@@ -220,12 +214,24 @@ def _manual_panel(
 def progress_dashboard(
     kanji: KanjiProgress, manual: ManualProgress, vocab: VocabProgress
 ) -> None:
-    """Render Kanji, Reading, Grammar, and JLPT vocab coverage panels."""
+    """Render overall progress followed by subject breakdown panels."""
+    reading_total = manual.reading[0]
+    grammar_total = manual.grammar[0]
+    console.print(
+        _progress_grid(
+            [
+                ("Kanji", kanji.known_total, kanji.total),
+                ("Reading", reading_total.known, reading_total.total),
+                ("Grammar", grammar_total.known, grammar_total.total),
+                ("Vocab", vocab.placed, vocab.total_ranked),
+            ]
+        )
+    )
+    console.print()
+
     # --- Kanji panel: coverage bars per JLPT level ---
     kanji_body = Table.grid()
     kanji_body.add_column()
-    kanji_body.add_row(_bar(kanji.known_total, kanji.total, width=30))
-    kanji_body.add_row("")
     kanji_body.add_row(
         _progress_grid(
             [(f"N{lb.level}", lb.known, lb.total) for lb in kanji.levels]
@@ -251,8 +257,6 @@ def progress_dashboard(
     _manual_panel("Grammar — textbook coverage", manual.grammar)
 
     # --- Vocab panel: coverage bars per JLPT level ---
-    pct = (vocab.placed / vocab.total_ranked * 100) if vocab.total_ranked else 0.0
-
     vocab_body = Table.grid()
     vocab_body.add_column()
     vocab_body.add_row(
@@ -263,8 +267,7 @@ def progress_dashboard(
     vocab_body.add_row("")
     vocab_body.add_row(
         Text(
-            f"{vocab.placed}/{vocab.total_ranked} JLPT words known "
-            f"({pct:.0f}%)  •  {vocab.unranked} deck words with no JLPT level",
+            f"{vocab.unranked} known words with no JLPT level",
             style="dim italic",
         )
     )

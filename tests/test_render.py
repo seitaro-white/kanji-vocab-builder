@@ -127,7 +127,7 @@ def test_progress_dashboard_renders_key_figures():
     assert "30" in out  # unranked vocab
 
 
-def test_progress_dashboard_renders_manual_panels_in_order():
+def test_progress_dashboard_renders_summary_before_detail_panels():
     kanji, vocab = _sample()
     manual = manual_coverage(
         ManualProgressCounts(
@@ -151,8 +151,12 @@ def test_progress_dashboard_renders_manual_panels_in_order():
         out.index("Vocab — JLPT coverage"),
     ]
     assert panel_order == sorted(panel_order)
-    assert "6/81" in out
-    assert "1/41" in out
+
+    for total in ["180/979", "6/81", "10/26", "650/7836"]:
+        assert out.index(total) < panel_order[0]
+        assert out.count(total) == 1
+
+    assert out.index("1/41") > panel_order[1]
     assert "2/29" in out
     assert "3/11" in out
     assert "10/26" in out

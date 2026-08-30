@@ -67,8 +67,9 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 ### Progress dashboard
 
 Run `kanji-vocab-miner stats` to show your Kanji, Reading, Grammar, and
-vocabulary progress. The dashboard combines Anki data with the manually
-tracked textbook sections in `manual_progress.toml`.
+vocabulary progress. Overall bars appear together at the top, followed by
+panels with the JLPT-level or textbook-part breakdowns. The dashboard combines
+Anki data with the manually tracked textbook sections in `manual_progress.toml`.
 
 For now, the file is read from the directory where you run the command. When
 working from this repository, edit the included `manual_progress.toml` and run
