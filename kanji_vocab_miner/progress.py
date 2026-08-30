@@ -7,6 +7,8 @@ from kanji_vocab_miner.jouyou_data import JOUYOU
 
 # N5 (easiest) first, N1 (hardest) last.
 LEVEL_ORDER: list[int] = [5, 4, 3, 2, 1]
+# The current kanji study goal is JLPT N2 and everything below it.
+KANJI_TARGET_LEVELS: list[int] = [5, 4, 3, 2]
 
 
 @dataclass
@@ -27,27 +29,32 @@ class VocabProgress:
 
 @dataclass
 class KanjiProgress:
-    levels: list[LevelBar]  # one bar per N-level, N5..N1
-    known_total: int
-    total: int
-    missing_from_deck: int
-    unranked: int  # known jouyou kanji with no JLPT level in the source data
+    levels: list[LevelBar]  # detail bars for every N-level, N5..N1
+    known_total: int  # reviewed kanji within the N2 target
+    total: int  # all kanji within the N2 target
+    missing_from_deck: int  # target kanji not present in the kanji deck
+    unranked: int  # reviewed jouyou kanji with no JLPT level in the source data
 
 
 def kanji_coverage(reviewed_kanji: set[str], all_deck_kanji: set[str]) -> KanjiProgress:
-    """Compute Jouyou kanji coverage from reviewed and deck-present kanji."""
-    known = reviewed_kanji & JOUYOU
+    """Compute kanji coverage for the N2-and-below study target."""
+    reviewed_jouyou = reviewed_kanji & JOUYOU
     level_index = kanji_jlpt.get_kanji_level_index()
     totals = kanji_jlpt.kanji_level_totals()
+    target_kanji = {
+        kanji
+        for kanji in JOUYOU
+        if level_index.get(kanji) in KANJI_TARGET_LEVELS
+    }
 
     unranked = 0
     known_counts = {level: 0 for level in LEVEL_ORDER}
-    for kanji in known:
+    for kanji in reviewed_jouyou:
         level = level_index.get(kanji)
         if level is None:
             unranked += 1
-            continue
-        known_counts[level] += 1
+        else:
+            known_counts[level] += 1
 
     levels = [
         LevelBar(level=level, known=known_counts[level], total=totals[level])
@@ -56,9 +63,9 @@ def kanji_coverage(reviewed_kanji: set[str], all_deck_kanji: set[str]) -> KanjiP
 
     return KanjiProgress(
         levels=levels,
-        known_total=len(known),
-        total=len(JOUYOU),
-        missing_from_deck=len(JOUYOU - all_deck_kanji),
+        known_total=len(reviewed_jouyou & target_kanji),
+        total=len(target_kanji),
+        missing_from_deck=len(target_kanji - all_deck_kanji),
         unranked=unranked,
     )
 

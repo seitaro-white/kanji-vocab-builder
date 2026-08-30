@@ -191,7 +191,7 @@ def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
 
 
 def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
-    """Render the Jouyou-kanji and JLPT vocab coverage dashboard."""
+    """Render the N2-target kanji and full JLPT vocab coverage dashboard."""
     # --- Kanji panel: coverage bars per JLPT level ---
     kanji_body = Table.grid()
     kanji_body.add_column()
@@ -205,15 +205,15 @@ def progress_dashboard(kanji: KanjiProgress, vocab: VocabProgress) -> None:
     kanji_body.add_row("")
     kanji_body.add_row(
         Text(
-            f"{kanji.missing_from_deck} Jouyou kanji not yet in your deck  •  "
-            f"{kanji.unranked} known kanji with no JLPT level",
+            f"{kanji.missing_from_deck} N2-target kanji not yet in your deck  •  "
+            f"{kanji.unranked} reviewed kanji with no JLPT level",
             style="dim italic",
         )
     )
     console.print(
         Panel(
             kanji_body,
-            title="[bold yellow]Kanji — JLPT coverage[/bold yellow]",
+            title="[bold yellow]Kanji — N2 target coverage[/bold yellow]",
             border_style="bright_blue",
         )
     )

@@ -72,14 +72,14 @@ def test_words_table_shows_jlpt_level():
 def _sample():
     kanji = KanjiProgress(
         levels=[
-            LevelBar(5, 80, 300),
-            LevelBar(4, 60, 300),
-            LevelBar(3, 40, 400),
-            LevelBar(2, 0, 500),
-            LevelBar(1, 0, 464),
+            LevelBar(5, 70, 79),
+            LevelBar(4, 60, 166),
+            LevelBar(3, 40, 367),
+            LevelBar(2, 10, 367),
+            LevelBar(1, 20, 985),
         ],
         known_total=180,
-        total=2136,
+        total=979,
         missing_from_deck=500,
         unranked=12,
     )
@@ -108,8 +108,9 @@ def test_progress_dashboard_renders_key_figures():
         render.progress_dashboard(kanji, vocab)
     out = cap.get()
 
-    # Kanji headline and denominator.
-    assert "2136" in out
+    # Kanji headline and N2-target denominator.
+    assert "N2 target coverage" in out
+    assert "979" in out
     assert "180" in out
     assert "12" in out  # kanji with no JLPT level
     # Level labels, denominator, and honesty footer.

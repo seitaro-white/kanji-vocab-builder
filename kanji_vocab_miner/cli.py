@@ -267,7 +267,7 @@ def setup():
 
 @jisho_anki.command()
 def stats():
-    """Show Jouyou kanji and JLPT vocab coverage."""
+    """Show N2-target kanji and JLPT vocab coverage."""
     with console.status("[bold]Crunching your progress…[/bold]", spinner="dots"):
         try:
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
