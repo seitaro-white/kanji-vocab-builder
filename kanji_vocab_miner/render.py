@@ -175,7 +175,7 @@ def word(word: JishoWord, freq_map: dict = None) -> None:
 def _bar(known: int, total: int, width: int = 24) -> Text:
     """Build a coloured progress bar with a 'known/total (pct%)' suffix."""
     pct = (known / total) if total else 0.0
-    filled = round(pct * width)
+    filled = round(max(0.0, min(pct, 1.0)) * width)
     # Colour by how far along: red -> yellow -> green.
     colour = "#ff5f5f" if pct < 0.34 else "#ebff0a" if pct < 0.67 else "#00c18b"
     bar = Text()
@@ -223,7 +223,7 @@ def progress_dashboard(
                 ("Kanji", kanji.known_total, kanji.total),
                 ("Reading", reading_total.known, reading_total.total),
                 ("Grammar", grammar_total.known, grammar_total.total),
-                ("Vocab", vocab.placed, vocab.total_ranked),
+                ("Vocab", vocab.known, vocab.total),
             ]
         )
     )
@@ -255,31 +255,6 @@ def progress_dashboard(
 
     _manual_panel("Reading — textbook coverage", manual.reading)
     _manual_panel("Grammar — textbook coverage", manual.grammar)
-
-    # --- Vocab panel: coverage bars per JLPT level ---
-    vocab_body = Table.grid()
-    vocab_body.add_column()
-    vocab_body.add_row(
-        _progress_grid(
-            [(f"N{lb.level}", lb.known, lb.total) for lb in vocab.levels]
-        )
-    )
-    vocab_body.add_row("")
-    vocab_body.add_row(
-        Text(
-            f"{vocab.unranked} known words with no JLPT level",
-            style="dim italic",
-        )
-    )
-    console.print(
-        Panel(
-            vocab_body,
-            title="[bold yellow]Vocab — JLPT coverage[/bold yellow]",
-            border_style="bright_blue",
-        )
-    )
-
-
 
 
 def info(msg: str) -> None:

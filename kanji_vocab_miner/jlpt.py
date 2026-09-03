@@ -66,15 +66,6 @@ def build_level_index() -> dict[str, int]:
     return index
 
 
-@functools.lru_cache(maxsize=1)
-def level_totals() -> dict[int, int]:
-    """Total distinct vendored words per N-level."""
-    totals = {level: 0 for level in range(1, NUM_LEVELS + 1)}
-    for *_rest, level in WORDS:
-        totals[level] += 1
-    return totals
-
-
 def words_in_level(level: int) -> list[LevelWord]:
     """Return the vendored entries tagged at the given N-level (1-5)."""
     if not (1 <= level <= NUM_LEVELS):

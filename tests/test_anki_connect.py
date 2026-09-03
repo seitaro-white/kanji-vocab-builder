@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -175,21 +176,21 @@ def test_get_kanji_review_status_distinguishes_new_and_missing(monkeypatch):
     assert connect.get_kanji_review_status("無") == KanjiReviewStatus.NOT_IN_DECK
 
 
-def test_get_reviewed_vocab_seen_only_adds_filter(monkeypatch):
-    """include_new=False restricts to cards seen at least once (-is:new)."""
-    captured = {}
+def test_count_vocab_notes_added_since_uses_note_creation_dates(monkeypatch):
+    def note_id(year, month, day):
+        return int(datetime(year, month, day, 12).timestamp() * 1000)
 
+    old_note = note_id(2026, 9, 2)
+    first_tracked_note = note_id(2026, 9, 3)
+    later_note = note_id(2026, 9, 4)
     def fake_send(action, **params):
-        if action == "findCards":
-            captured["query"] = params["query"]
-            return [10]
-        if action == "cardsInfo":
-            return [{"fields": {"Expression": {"value": "日本"}}}]
-        raise AssertionError(f"unexpected action {action}")
+        assert action == "findNotes"
+        assert params["query"] == f'deck:"{connect.VOCAB_DECK_NAME}"'
+        return [old_note, first_tracked_note, later_note, later_note]
 
     monkeypatch.setattr(connect, "send_request", fake_send)
-    connect.get_reviewed_vocab(include_new=False)
-    assert "-is:new" in captured["query"]
+
+    assert connect.count_vocab_notes_added_since(date(2026, 9, 3)) == 2
 
 
 @pytest.fixture

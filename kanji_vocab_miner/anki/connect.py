@@ -1,23 +1,22 @@
-import re
-import requests
 import json
-from typing import List, Dict, Set, Any, Optional, Tuple
 import re
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-# Update import to avoid circular dependency
-from kanji_vocab_miner.utils import is_kanji
+import requests
+from tqdm import tqdm
+
 from kanji_vocab_miner.anki.schemas import KanjiCard
-from kanji_vocab_miner.review_status import KanjiReviewStatus
-from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
 from kanji_vocab_miner.config import (
-    load_config,
+    FIELDS,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
     VOCAB_TAG,
-    FIELDS,
+    load_config,
 )
-
-from tqdm import tqdm
+from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
+from kanji_vocab_miner.review_status import KanjiReviewStatus
+from kanji_vocab_miner.utils import is_kanji
 
 # Lazy-loaded configuration
 _config = None
@@ -403,25 +402,27 @@ def get_all_kanji() -> Set[str]:
         return set()
 
 
-def get_reviewed_vocab(include_new: bool = True) -> List[str]:
-    """
-    Get a list of words from the vocabulary deck.
-    Extracts the main word from the 'Front' field, typically from <ruby> tags.
+def count_vocab_notes_added_since(start_date: date) -> int:
+    """Count distinct vocabulary notes created on or after ``start_date``.
 
-    Args:
-        include_new: When False, only count cards seen at least once (-is:new),
-            matching the "reviewed" definition used for kanji. Defaults to True
-            (every card in the deck) to preserve "already in deck" lookups.
-
-    Returns:
-        A list of words (main text from ruby tags or plain text).
+    Anki note IDs encode their creation time in Unix milliseconds. Comparing
+    their local creation date keeps the counter aligned with the date in the
+    manual progress file and counts notes regardless of review state.
     """
+    note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"')
+    return sum(
+        datetime.fromtimestamp(int(note_id) / 1000).date() >= start_date
+        for note_id in set(note_ids or [])
+    )
+
+
+def get_reviewed_vocab() -> List[str]:
+    """Return every expression in the vocabulary deck."""
     reviewed_vocab: List[str] = []
     try:
-        query = f'deck:"{VOCAB_DECK_NAME}"'
-        if not include_new:
-            query += " -is:new"
-        card_ids = send_request("findCards", query=query)
+        card_ids = send_request(
+            "findCards", query=f'deck:"{VOCAB_DECK_NAME}"'
+        )
 
         # Get card info for each card
         cards_info = send_request("cardsInfo", cards=card_ids)

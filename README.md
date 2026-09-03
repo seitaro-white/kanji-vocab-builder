@@ -68,8 +68,9 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 
 Run `kanji-vocab-miner stats` to show your Kanji, Reading, Grammar, and
 vocabulary progress. Overall bars appear together at the top, followed by
-panels with the JLPT-level or textbook-part breakdowns. The dashboard combines
-Anki data with the manually tracked textbook sections in `manual_progress.toml`.
+Kanji and textbook-part breakdowns. Vocabulary is measured against a core
+6,000-word target: the tool adds every vocabulary note created on or after the
+configured tracking date to the manually estimated baseline.
 
 For now, the file is read from the directory where you run the command. When
 working from this repository, edit the included `manual_progress.toml` and run
@@ -78,6 +79,9 @@ working from this repository, edit the included `manual_progress.toml` and run
 The file contains:
 
 ```toml
+vocab_baseline = 4400
+vocab_tracking_start = 2026-09-03
+
 reading_i = 0
 reading_ii = 0
 reading_iii = 0
@@ -86,10 +90,14 @@ grammar_ii = 0
 grammar_iii = 0
 ```
 
-Each value is an independent count of completed sections. Reading has totals
-of I=41, II=29 (book sections 42–70), and III=11, for an aggregate of 81.
-Grammar has totals of I=10, II=11 (book sections 11–21), and III=5 (book
-sections 22–26), for an aggregate of 26.
+`vocab_baseline` is the known-word estimate on `vocab_tracking_start`.
+Vocabulary notes added to the configured deck from that date onward increase
+this count, whether or not they have been reviewed yet.
+
+Each Reading and Grammar value is an independent count of completed sections.
+Reading has totals of I=41, II=29 (book sections 42–70), and III=11, for an
+aggregate of 81. Grammar has totals of I=10, II=11 (book sections 11–21), and
+III=5 (book sections 22–26), for an aggregate of 26.
 
 
 ## Credits

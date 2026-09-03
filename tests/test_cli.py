@@ -1,5 +1,7 @@
 """Tests for CLI commands that don't require a live Anki."""
 
+from datetime import date
+
 import pytest
 from click.testing import CliRunner
 
@@ -19,11 +21,15 @@ def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: {"一"})
     monkeypatch.setattr(cli.ankiconnect, "get_all_kanji", lambda: {"一"})
     monkeypatch.setattr(
-        cli.ankiconnect, "get_reviewed_vocab", lambda **kwargs: ["猫"]
+        cli.ankiconnect, "count_vocab_notes_added_since", lambda start_date: 25
     )
-    counts = ManualProgressCounts(reading_i=1, grammar_i=2)
+    counts = ManualProgressCounts(
+        vocab_baseline=4400,
+        vocab_tracking_start=date(2026, 9, 3),
+        reading_i=1,
+        grammar_i=2,
+    )
     monkeypatch.setattr(cli.manual_progress, "load_manual_progress", lambda: counts)
-    monkeypatch.setattr(cli.known_words, "load_known_words", lambda: set())
 
     rendered = []
     monkeypatch.setattr(
@@ -38,6 +44,7 @@ def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
     assert len(rendered) == 1
     assert rendered[0][1].reading[1].known == 1
     assert rendered[0][1].grammar[1].known == 2
+    assert rendered[0][2].known == 4425
 
 
 def test_review_level_rejects_invalid_level():

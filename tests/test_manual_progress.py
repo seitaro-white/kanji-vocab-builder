@@ -1,4 +1,6 @@
-"""Tests for the manual Reading and Grammar progress file."""
+"""Tests for the manual progress file."""
+
+from datetime import date
 
 from kanji_vocab_miner import manual_progress
 from kanji_vocab_miner.progress import ManualProgressCounts
@@ -14,6 +16,8 @@ def test_load_manual_progress(tmp_path):
     path = tmp_path / "manual_progress.toml"
     path.write_text(
         """\
+vocab_baseline = 4400
+vocab_tracking_start = 2026-09-03
 reading_i = 1
 reading_ii = 2
 reading_iii = 3
@@ -25,6 +29,8 @@ grammar_iii = 0
     )
 
     assert manual_progress.load_manual_progress(path) == ManualProgressCounts(
+        vocab_baseline=4400,
+        vocab_tracking_start=date(2026, 9, 3),
         reading_i=1,
         reading_ii=2,
         reading_iii=3,

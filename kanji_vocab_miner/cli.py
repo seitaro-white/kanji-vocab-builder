@@ -277,23 +277,24 @@ def setup():
 
 @jisho_anki.command()
 def stats():
-    """Show kanji, Reading, Grammar, and JLPT vocab coverage."""
+    """Show kanji, Reading, Grammar, and core vocabulary progress."""
     with console.status("[bold]Crunching your progress…[/bold]", spinner="dots"):
+        manual_counts = manual_progress.load_manual_progress()
         try:
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
             all_kanji = ankiconnect.get_all_kanji()
-            deck_vocab = ankiconnect.get_reviewed_vocab(include_new=False)
+            added_vocab = ankiconnect.count_vocab_notes_added_since(
+                manual_counts.vocab_tracking_start
+            )
         except Exception as e:
             error(f"AnkiConnect error: {e}")
             sys.exit(1)
 
-        manual_counts = manual_progress.load_manual_progress()
-
-        # Words you've marked known (but not carded) count toward coverage too.
-        known_vocab = deck_vocab + list(known_words.load_known_words())
         kanji_progress = progress.kanji_coverage(reviewed_kanji, all_kanji)
         textbook_progress = progress.manual_coverage(manual_counts)
-        vocab_progress = progress.vocab_coverage(known_vocab)
+        vocab_progress = progress.vocab_progress(
+            manual_counts.vocab_baseline, added_vocab
+        )
 
     render.progress_dashboard(kanji_progress, textbook_progress, vocab_progress)
 
@@ -306,8 +307,7 @@ def review_level(level):
     Shows a scrollable checklist of words not already in your deck or known
     list, alongside each word's hardest kanji and whether you've already
     reviewed it in Anki. Toggle the ones you know with space and confirm to
-    record them (without making a flashcard) so they count toward your
-    coverage.
+    record them (without making a flashcard) so they are skipped next time.
     """
     parsed_level = jlpt.parse_level(level)
     if parsed_level is None:
@@ -316,7 +316,7 @@ def review_level(level):
 
     with console.status(f"[bold]Loading N{parsed_level}…[/bold]", spinner="dots"):
         try:
-            deck = set(ankiconnect.get_reviewed_vocab(include_new=True))
+            deck = set(ankiconnect.get_reviewed_vocab())
             reviewed_kanji = ankiconnect.get_reviewed_kanji()
         except Exception as e:
             error(f"AnkiConnect error: {e}")
@@ -343,7 +343,7 @@ def review_level(level):
         if known_words.add_known_word(word.expression):
             marked += 1
 
-    success(f"Marked {marked} word(s) as known — they'll now count toward your coverage.")
+    success(f"Marked {marked} word(s) as known — they'll be skipped next time.")
 
 
 def _sync_furigana_and_exit() -> None:

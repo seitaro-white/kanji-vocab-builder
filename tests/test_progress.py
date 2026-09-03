@@ -1,6 +1,8 @@
 """Tests for the pure progress-calculation logic."""
 
-from kanji_vocab_miner import jlpt, kanji_jlpt, progress
+from datetime import date
+
+from kanji_vocab_miner import kanji_jlpt, progress
 from kanji_vocab_miner.progress import ManualProgressCounts
 
 
@@ -63,6 +65,8 @@ def test_kanji_coverage_missing_from_deck():
 
 def test_manual_coverage_aggregates_independent_section_counts():
     counts = ManualProgressCounts(
+        vocab_baseline=4400,
+        vocab_tracking_start=date(2026, 9, 3),
         reading_i=10,
         reading_ii=20,
         reading_iii=5,
@@ -89,26 +93,8 @@ def test_manual_coverage_aggregates_independent_section_counts():
     ]
 
 
-def test_vocab_coverage_per_level():
-    # 猫 is N5, 一定 is N2 in the vendored JLPT index.
-    result = progress.vocab_coverage(["猫", "一定"])
+def test_vocab_progress_adds_new_notes_to_manual_baseline():
+    result = progress.vocab_progress(baseline=4400, added_since_baseline=25)
 
-    # One bar per N-level, N5 first through N1 last.
-    assert len(result.levels) == 5
-    assert [lb.level for lb in result.levels] == [5, 4, 3, 2, 1]
-    by = {lb.level: lb for lb in result.levels}
-    assert by[5].known == 1  # 猫
-    assert by[2].known == 1  # 一定
-    assert by[4].known == 0
-    assert result.placed == 2
-    assert result.total_ranked == sum(jlpt.level_totals().values())
-
-
-def test_vocab_coverage_unranked_and_dedup():
-    # でたらめ123 isn't a real word -> unranked.
-    # Duplicate "猫" must not be double-counted.
-    result = progress.vocab_coverage(["猫", "猫", "でたらめ123"])
-
-    assert result.total_deck == 2  # distinct words
-    assert result.placed == 1  # only 猫 has a level
-    assert result.unranked == 1  # でたらめ123
+    assert result.known == 4425
+    assert result.total == 6000

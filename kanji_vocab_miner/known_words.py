@@ -1,8 +1,7 @@
-"""Persist vocabulary the user knows but hasn't made a flashcard for.
+"""Persist vocabulary triaged as known without making a flashcard.
 
-A plain newline-delimited text file of expressions (kanji surface forms),
-stored next to the app config. Counted alongside the Anki deck when computing
-vocab coverage, so the charts reflect words known-but-not-carded.
+The JLPT review command uses this newline-delimited file to avoid presenting
+already-known expressions again. These entries do not affect core-6k progress.
 """
 
 from pathlib import Path

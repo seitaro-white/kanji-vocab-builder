@@ -1,5 +1,7 @@
 """Smoke tests for the progress dashboard rendering."""
 
+from datetime import date
+
 import pytest
 
 from kanji_vocab_miner import render
@@ -89,28 +91,18 @@ def _sample():
         missing_from_deck=500,
         unranked=12,
     )
-    # Coverage tapering off toward harder levels.
-    levels = [
-        LevelBar(5, 400, 710),
-        LevelBar(4, 200, 663),
-        LevelBar(3, 50, 2077),
-        LevelBar(2, 0, 1731),
-        LevelBar(1, 0, 2655),
-    ]
-    placed = sum(lb.known for lb in levels)
-    vocab = VocabProgress(
-        levels=levels,
-        placed=placed,
-        total_ranked=7836,
-        unranked=30,
-        total_deck=placed + 30,
-    )
+    vocab = VocabProgress(known=4425, total=6000)
     return kanji, vocab
 
 
 def test_progress_dashboard_renders_key_figures():
     kanji, vocab = _sample()
-    manual = manual_coverage(ManualProgressCounts())
+    manual = manual_coverage(
+        ManualProgressCounts(
+            vocab_baseline=4400,
+            vocab_tracking_start=date(2026, 9, 3),
+        )
+    )
     with render.console.capture() as cap:
         render.progress_dashboard(kanji, manual, vocab)
     out = cap.get()
@@ -120,17 +112,17 @@ def test_progress_dashboard_renders_key_figures():
     assert "979" in out
     assert "180" in out
     assert "12" in out  # kanji with no JLPT level
-    # Level labels, denominator, and honesty footer.
-    assert "N5" in out
-    assert "N1" in out
-    assert "7836" in out
-    assert "30" in out  # unranked vocab
+    # Vocabulary is one core-6k bar, with no JLPT breakdown panel.
+    assert "4425/6000" in out
+    assert "Vocab — JLPT coverage" not in out
 
 
 def test_progress_dashboard_renders_summary_before_detail_panels():
     kanji, vocab = _sample()
     manual = manual_coverage(
         ManualProgressCounts(
+            vocab_baseline=4400,
+            vocab_tracking_start=date(2026, 9, 3),
             reading_i=1,
             reading_ii=2,
             reading_iii=3,
@@ -148,11 +140,10 @@ def test_progress_dashboard_renders_summary_before_detail_panels():
         out.index("Kanji — N2 target coverage"),
         out.index("Reading — textbook coverage"),
         out.index("Grammar — textbook coverage"),
-        out.index("Vocab — JLPT coverage"),
     ]
     assert panel_order == sorted(panel_order)
 
-    for total in ["180/979", "6/81", "10/26", "650/7836"]:
+    for total in ["180/979", "6/81", "10/26", "4425/6000"]:
         assert out.index(total) < panel_order[0]
         assert out.count(total) == 1
 

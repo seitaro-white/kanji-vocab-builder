@@ -1,8 +1,9 @@
 """Pure progress-calculation logic (no IO), in the spirit of card_processor."""
 
 from dataclasses import dataclass
+from datetime import date
 
-from kanji_vocab_miner import jlpt, kanji_jlpt
+from kanji_vocab_miner import kanji_jlpt
 from kanji_vocab_miner.jouyou_data import JOUYOU
 
 # N5 (easiest) first, N1 (hardest) last.
@@ -23,22 +24,22 @@ GRAMMAR_MAXIMA: dict[str, int] = {
 }
 READING_TOTAL = sum(READING_MAXIMA.values())
 GRAMMAR_TOTAL = sum(GRAMMAR_MAXIMA.values())
+VOCAB_TARGET = 6000
 
 
 @dataclass
 class LevelBar:
     level: int  # JLPT N-level, 1-5
-    known: int  # distinct known items (kanji or words) at this level
-    total: int  # vendored items at this level
+    known: int  # reviewed kanji at this level
+    total: int  # vendored kanji at this level
 
 
-@dataclass
+@dataclass(frozen=True)
 class VocabProgress:
-    levels: list[LevelBar]  # one bar per N-level, N5..N1
-    placed: int  # distinct deck words with a known level (sum of bar.known)
-    total_ranked: int  # total vendored JLPT words
-    unranked: int  # no JLPT level found for this deck word
-    total_deck: int
+    """Vocabulary count relative to the core 6,000-word target."""
+
+    known: int
+    total: int
 
 
 @dataclass
@@ -52,8 +53,10 @@ class KanjiProgress:
 
 @dataclass(frozen=True)
 class ManualProgressCounts:
-    """Completed section counts read from the manual progress file."""
+    """Manual vocabulary baseline and completed textbook section counts."""
 
+    vocab_baseline: int
+    vocab_tracking_start: date
     reading_i: int = 0
     reading_ii: int = 0
     reading_iii: int = 0
@@ -149,33 +152,9 @@ def kanji_coverage(reviewed_kanji: set[str], all_deck_kanji: set[str]) -> KanjiP
     )
 
 
-def vocab_coverage(deck_words: list[str]) -> VocabProgress:
-    """Compute JLPT-level coverage for the words present in the vocab deck.
-
-    Each distinct deck word is placed via an exact lookup in the embedded
-    JLPT index into its N-level; words absent from the index are `unranked`.
-    """
-    distinct = set(deck_words)
-    level_index = jlpt.get_level_index()
-    totals = jlpt.level_totals()
-
-    unranked = 0
-    known_counts = {level: 0 for level in LEVEL_ORDER}
-    for word in distinct:
-        level = level_index.get(word)
-        if level is None:
-            unranked += 1
-            continue
-        known_counts[level] += 1
-
-    levels = [
-        LevelBar(level=level, known=known_counts[level], total=totals[level])
-        for level in LEVEL_ORDER
-    ]
+def vocab_progress(baseline: int, added_since_baseline: int) -> VocabProgress:
+    """Add newly created vocabulary notes to the manual baseline."""
     return VocabProgress(
-        levels=levels,
-        placed=sum(known_counts.values()),
-        total_ranked=sum(totals.values()),
-        unranked=unranked,
-        total_deck=len(distinct),
+        known=baseline + added_since_baseline,
+        total=VOCAB_TARGET,
     )

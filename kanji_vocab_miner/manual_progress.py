@@ -1,4 +1,4 @@
-"""Load manually tracked Reading and Grammar progress."""
+"""Load the vocabulary baseline and manually tracked textbook progress."""
 
 import tomllib
 from pathlib import Path
@@ -14,6 +14,6 @@ def manual_progress_path() -> Path:
 
 
 def load_manual_progress(path: Path | None = None) -> ManualProgressCounts:
-    """Load completed textbook section counts from TOML."""
+    """Load vocabulary and completed textbook section counts from TOML."""
     with open(path or manual_progress_path(), "rb") as progress_file:
         return ManualProgressCounts(**tomllib.load(progress_file))
