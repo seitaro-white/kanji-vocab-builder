@@ -22,6 +22,13 @@ from jamdict.jmdict import JMDEntry
 
 console = Console()
 
+PROGRESS_COLORS = {
+    "kanji": "#d47728",
+    "vocab": "#528bc0",
+    "grammar": "#5a9b66",
+    "reading": "#b47d59",
+}
+
 
 def _resolve_jlpt_level(word: JishoWord) -> int:
     """Prefer our vendored JLPT index; fall back to Jisho's live-scraped tag."""
@@ -172,12 +179,10 @@ def word(word: JishoWord, freq_map: dict = None) -> None:
     console.print(Rule(style="dim"))
 
 
-def _bar(known: int, total: int, width: int = 24) -> Text:
-    """Build a coloured progress bar with a 'known/total (pct%)' suffix."""
+def _bar(known: int, total: int, colour: str, width: int = 24) -> Text:
+    """Build a progress bar in its subject colour with a count suffix."""
     pct = (known / total) if total else 0.0
     filled = round(max(0.0, min(pct, 1.0)) * width)
-    # Colour by how far along: red -> yellow -> green.
-    colour = "#ff5f5f" if pct < 0.34 else "#ebff0a" if pct < 0.67 else "#00c18b"
     bar = Text()
     bar.append("█" * filled, style=colour)
     bar.append("░" * (width - filled), style="grey37")
@@ -185,22 +190,22 @@ def _bar(known: int, total: int, width: int = 24) -> Text:
     return bar
 
 
-def _progress_grid(rows: List[Tuple[str, int, int]]) -> Table:
-    """A two-column grid of label + bar for the given (label, known, total) rows."""
+def _progress_grid(rows: List[Tuple[str, int, int, str]]) -> Table:
+    """Build a label-and-bar grid from (label, known, total, colour) rows."""
     grid = Table.grid(padding=(0, 2))
     grid.add_column(justify="right", style="bold chartreuse3", no_wrap=True)
     grid.add_column()
-    for label, known, total in rows:
-        grid.add_row(label, _bar(known, total))
+    for label, known, total, colour in rows:
+        grid.add_row(label, _bar(known, total, colour))
     return grid
 
 
 def _manual_panel(
-    title: str, bars: tuple[ManualProgressBar, ...]
+    title: str, bars: tuple[ManualProgressBar, ...], colour: str
 ) -> None:
     """Render one manually tracked subject's section breakdown."""
     body = _progress_grid(
-        [(bar.label, bar.known, bar.total) for bar in bars[1:]]
+        [(bar.label, bar.known, bar.total, colour) for bar in bars[1:]]
     )
     console.print(
         Panel(
@@ -220,10 +225,20 @@ def progress_dashboard(
     console.print(
         _progress_grid(
             [
-                ("Kanji", kanji.known_total, kanji.total),
-                ("Reading", reading_total.known, reading_total.total),
-                ("Grammar", grammar_total.known, grammar_total.total),
-                ("Vocab", vocab.known, vocab.total),
+                ("Kanji", kanji.known_total, kanji.total, PROGRESS_COLORS["kanji"]),
+                (
+                    "Reading",
+                    reading_total.known,
+                    reading_total.total,
+                    PROGRESS_COLORS["reading"],
+                ),
+                (
+                    "Grammar",
+                    grammar_total.known,
+                    grammar_total.total,
+                    PROGRESS_COLORS["grammar"],
+                ),
+                ("Vocab", vocab.known, vocab.total, PROGRESS_COLORS["vocab"]),
             ]
         )
     )
@@ -234,7 +249,10 @@ def progress_dashboard(
     kanji_body.add_column()
     kanji_body.add_row(
         _progress_grid(
-            [(f"N{lb.level}", lb.known, lb.total) for lb in kanji.levels]
+            [
+                (f"N{lb.level}", lb.known, lb.total, PROGRESS_COLORS["kanji"])
+                for lb in kanji.levels
+            ]
         )
     )
     kanji_body.add_row("")
@@ -253,8 +271,12 @@ def progress_dashboard(
         )
     )
 
-    _manual_panel("Reading — textbook coverage", manual.reading)
-    _manual_panel("Grammar — textbook coverage", manual.grammar)
+    _manual_panel(
+        "Reading — textbook coverage", manual.reading, PROGRESS_COLORS["reading"]
+    )
+    _manual_panel(
+        "Grammar — textbook coverage", manual.grammar, PROGRESS_COLORS["grammar"]
+    )
 
 
 def info(msg: str) -> None:

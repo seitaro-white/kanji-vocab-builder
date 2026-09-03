@@ -95,6 +95,28 @@ def _sample():
     return kanji, vocab
 
 
+@pytest.mark.parametrize(
+    ("category", "expected_colour"),
+    [
+        ("kanji", "#d47728"),
+        ("vocab", "#528bc0"),
+        ("grammar", "#5a9b66"),
+        ("reading", "#b47d59"),
+    ],
+)
+def test_progress_bars_use_fixed_category_colours(category, expected_colour):
+    bar = render._bar(1, 2, render.PROGRESS_COLORS[category])
+
+    assert bar.spans[0].style == expected_colour
+
+
+def test_progress_bar_colour_does_not_change_with_completion():
+    colour = render.PROGRESS_COLORS["kanji"]
+
+    assert render._bar(1, 10, colour).spans[0].style == colour
+    assert render._bar(9, 10, colour).spans[0].style == colour
+
+
 def test_progress_dashboard_renders_key_figures():
     kanji, vocab = _sample()
     manual = manual_coverage(
