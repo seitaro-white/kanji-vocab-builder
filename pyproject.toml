@@ -28,6 +28,7 @@ dependencies = [
     "jamdict>=0.1a11.post2",
     "jamdict-data>=1.5",
     "jsonschema>=4.23.0",
+    "pandas>=3.0.5",
     "pip>=25.1.1",
     "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.4",
@@ -35,6 +36,7 @@ dependencies = [
     "pytest==7.4.0",
     "requests==2.31.0",
     "rich>=14.0.0",
+    "scipy>=1.18.1",
     "tqdm>=4.67.1",
 ]
 

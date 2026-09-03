@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Set, Tuple
 
 from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.jisho import JishoWord
+from kanji_vocab_miner.utils import is_kanji
 
 def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int = 10) -> List[Tuple[JishoWord, int]]:
     """
@@ -28,8 +29,12 @@ def sort_and_limit_words(words: List[JishoWord], original_kanji:str, limit: int 
     sortorder = []
     for word in words:
 
-        # Remove the original Kanji from the set of other Kanji
-        other_kanji = set(word.expression) - {original_kanji}
+        # Ignore kana and other non-kanji characters when checking review status.
+        other_kanji = {
+            character
+            for character in word.expression
+            if is_kanji(character) and character != original_kanji
+        }
 
         # Priority 1: All other Kanji are reviewed
         # Priority 0: Some other Kanji are not reviewed

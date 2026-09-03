@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 import pytest
+
 from kanji_vocab_miner import card_processor
 from kanji_vocab_miner.jisho import JishoWord
 
@@ -56,6 +59,34 @@ def test_sort_and_limit_words(unordered_words):
     # Check that the words are sorted correctly
     result_kanji = [word.expression for word, _ in result]
     assert result_kanji == ["学校", "大学", "言語", "学問"]
+
+
+def test_sort_and_limit_words_ignores_hiragana_for_review_priority():
+    """Hiragana suffixes should not make a word look unreviewed."""
+    words = [
+        JishoWord(
+            expression="食事",
+            kana="しょくじ",
+            jlpt=5,
+            definitions=["meal"],
+        ),
+        JishoWord(
+            expression="食べる",
+            kana="たべる",
+            jlpt=4,
+            definitions=["to eat"],
+        ),
+    ]
+
+    with patch.object(card_processor.connect, "get_reviewed_kanji", return_value=set()):
+        result = card_processor.sort_and_limit_words(
+            words, original_kanji="食", limit=10
+        )
+
+    assert [(word.expression, priority) for word, priority in result] == [
+        ("食べる", 1),
+        ("食事", 0),
+    ]
 
 
 def test_sort_and_limit_words_empty_list():
