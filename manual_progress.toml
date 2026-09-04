@@ -1,9 +1,9 @@
-vocab_baseline = 4400
+vocab_baseline = 4200
 vocab_tracking_start = 2026-09-03
 
-reading_i = 22
+reading_i = 30
 reading_ii = 0
 reading_iii = 0
-grammar_i = 2
+grammar_i = 5
 grammar_ii = 0
 grammar_iii = 0
