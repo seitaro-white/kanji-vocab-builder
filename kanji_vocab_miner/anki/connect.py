@@ -11,13 +11,24 @@ from kanji_vocab_miner.config import (
     FIELDS,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
+    VOCAB_NOTE_TYPE_V2,
     VOCAB_TAG,
+    VOCAB_V2_FIELDS,
     load_config,
 )
-from kanji_vocab_miner.furigana import update_furigana_visibility
+from kanji_vocab_miner.furigana import (
+    render_japanese_cue,
+    update_furigana_visibility,
+)
 from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
+from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.utils import is_kanji
+from kanji_vocab_miner.vocab_models import (
+    AddFailure,
+    BatchAddResult,
+    PendingVocabItem,
+)
 
 # Lazy-loaded configuration
 _config = None
@@ -256,6 +267,105 @@ def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
     }
 
 
+def prepare_note_v2(
+    item: PendingVocabItem,
+    japanese_definition: JapaneseDefinition,
+    front: str,
+    japanese_cue: str,
+) -> Dict[str, Any]:
+    """Serialize fetched and rendered vocabulary data into a V2 Anki note.
+
+    Args:
+        item: Pending word with its recall preference.
+        japanese_definition: Normalized definition and Kotobank provenance.
+        front: Pre-rendered target word with review-dependent furigana.
+        japanese_cue: Pre-rendered Japanese definition cue.
+
+    Returns:
+        A deterministic thirteen-field AnkiConnect note payload without a deck.
+    """
+    word = item.word
+    fields = VOCAB_V2_FIELDS
+    return {
+        "modelName": VOCAB_NOTE_TYPE_V2,
+        "fields": {
+            fields["front"]: front,
+            fields["back"]: word.definitions[0],
+            fields["expression"]: word.expression,
+            fields["kana_reading"]: word.kana,
+            fields["grammar"]: (
+                word.parts_of_speech[0] if word.parts_of_speech else ""
+            ),
+            fields["definition"]: word.definitions[0],
+            fields["additional_definitions"]: "\n".join(word.definitions[1:]),
+            fields["jlpt"]: f"JLPT N{word.jlpt}" if word.jlpt else "",
+            fields["japanese_definition"]: "\n".join(japanese_definition.senses),
+            fields["japanese_cue"]: japanese_cue,
+            fields["recall"]: "1" if item.recall_enabled else "",
+            fields["definition_source"]: japanese_definition.source_name,
+            fields["definition_url"]: japanese_definition.source_url,
+        },
+        "tags": [VOCAB_TAG],
+        "options": {"allowDuplicate": False},
+    }
+
+
+def add_vocab_items(
+    items: List[PendingVocabItem], client: Optional[KotobankClient] = None
+) -> BatchAddResult:
+    """Commit included vocabulary sequentially and classify each outcome.
+
+    A deck-wide expression read happens immediately before processing. Existing
+    expressions are treated as satisfied without requesting a definition. Each
+    remaining item proceeds through definition lookup, furigana rendering, and
+    Anki addition in that order so a failure can be retained at its exact stage.
+
+    Args:
+        items: Included pending items in the user's chosen order.
+        client: Optional Kotobank client, primarily for external-service isolation.
+
+    Returns:
+        Structured successes, failures, and already-existing expressions.
+    """
+    result = BatchAddResult()
+    existing_expressions = get_vocab_expressions()
+    reviewed_kanji = get_reviewed_kanji()
+    kotobank_client = client or KotobankClient()
+
+    for item in items:
+        expression = item.word.expression
+        if expression in existing_expressions:
+            result.skipped_duplicates.append(item)
+            continue
+
+        try:
+            definition = kotobank_client.lookup(expression)
+        except Exception as error:
+            result.failed.append(AddFailure(item, "definition", str(error)))
+            continue
+
+        try:
+            front = fetch_jisho_word_furigana(expression, reviewed_kanji)
+            japanese_cue = render_japanese_cue(definition.senses, reviewed_kanji)
+            note = prepare_note_v2(item, definition, front, japanese_cue)
+        except Exception as error:
+            result.failed.append(AddFailure(item, "furigana", str(error)))
+            continue
+
+        try:
+            send_request(
+                "addNote", note=note | {"deckName": VOCAB_DECK_NAME}
+            )
+        except Exception as error:
+            result.failed.append(AddFailure(item, "anki", str(error)))
+            continue
+
+        result.added.append(item)
+        existing_expressions.add(expression)
+
+    return result
+
+
 def add_vocab_note_to_deck(
     selected_words: List[JishoWord], deckname: str = None, reviewed_kanji: Set[str] = None
 ) -> None:
@@ -383,76 +493,87 @@ def count_vocab_notes_added_since(start_date: date) -> int:
     )
 
 
-def get_reviewed_vocab() -> List[str]:
-    """Return every expression in the vocabulary deck."""
-    reviewed_vocab: List[str] = []
-    try:
-        card_ids = send_request(
-            "findCards", query=f'deck:"{VOCAB_DECK_NAME}"'
+def get_vocab_expressions() -> Set[str]:
+    """Read unique vocabulary identities at note level across both models.
+
+    Notes without a usable Expression field are ignored, allowing legacy and
+    V2 notes to coexist with unrelated or malformed historical deck content.
+
+    Returns:
+        The deduplicated nonblank Expression values in the vocabulary deck.
+    """
+    note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"') or []
+    if not note_ids:
+        return set()
+
+    notes = send_request("notesInfo", notes=note_ids) or []
+    return {
+        expression
+        for note in notes
+        if (
+            expression := note.get("fields", {})
+            .get("Expression", {})
+            .get("value", "")
+            .strip()
         )
+    }
 
-        # Get card info for each card
-        cards_info = send_request("cardsInfo", cards=card_ids)
 
-        reviewed_vocab = [
-            i["fields"]["Expression"]["value"]
-            for i in cards_info
-            if "Expression" in i["fields"] and
-            # Added this in to deal with my mess of old cards that don't match the current format!
-            i["fields"]["Expression"]["value"].strip() != ""
-        ]
-
-        return reviewed_vocab
-    except Exception as e:
-        # If there's any error, print a warning and return an empty list
-        # This behavior is consistent with get_reviewed_kanji
-        print(f"Warning: Failed to get reviewed Vocab: {str(e)}")
+def get_reviewed_vocab() -> List[str]:
+    """Return every vocabulary expression through the note-level read path."""
+    try:
+        return sorted(get_vocab_expressions())
+    except Exception as error:
+        print(f"Warning: Failed to get reviewed Vocab: {str(error)}")
         return []
 
 
 def sync_vocab_furigana() -> int:
-    """
-    Sync furigana visibility on all vocab cards based on the current reviewed kanji set.
+    """Update review-dependent furigana once per vocabulary note.
 
-    Cards whose Front field contains kanji that have since been reviewed will have
-    their furigana hidden (rt class="known"). Cards with unreviewed kanji will have
-    furigana shown. Also migrates any cards still using the legacy Anki notation.
+    Front is updated for compatible legacy and V2 notes. JapaneseCue is also
+    updated when present, while JapaneseDefinition remains unchanged. All
+    changed fields for one note are sent in a single AnkiConnect update.
 
     Returns:
-        Number of cards updated.
+        The number of notes successfully updated.
     """
     reviewed_kanji = get_reviewed_kanji()
-
     try:
-        card_ids = send_request("findCards", query=f'deck:"{VOCAB_DECK_NAME}"')
+        note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"') or []
+        notes = send_request("notesInfo", notes=note_ids) if note_ids else []
     except Exception:
         return 0
 
-    if not card_ids:
-        return 0
+    updated_count = 0
+    for note in notes:
+        note_id = note.get("noteId") or note.get("note")
+        fields = note.get("fields", {})
+        updated_fields: Dict[str, str] = {}
 
-    cards_info = send_request("cardsInfo", cards=card_ids)
+        front = fields.get("Front", {}).get("value", "")
+        if front:
+            updated_front, front_changed = _update_furigana_classes(
+                front, reviewed_kanji
+            )
+            if front_changed:
+                updated_fields["Front"] = updated_front
 
-    # Deduplicate by note ID — multiple card types can share one note
-    seen_notes: Set[int] = set()
-    updated = 0
+        japanese_cue = fields.get("JapaneseCue", {}).get("value", "")
+        if japanese_cue:
+            updated_cue, cue_changed = _update_furigana_classes(
+                japanese_cue, reviewed_kanji
+            )
+            if cue_changed:
+                updated_fields["JapaneseCue"] = updated_cue
 
-    for card in cards_info:
-        note_id = card.get("note")
-        if note_id in seen_notes:
+        if not updated_fields:
             continue
-        seen_notes.add(note_id)
 
-        front = card.get("fields", {}).get("Front", {}).get("value", "")
-        if not front:
-            continue
+        try:
+            update_note(note_id, updated_fields)
+            updated_count += 1
+        except Exception as error:
+            print(f"Warning: Failed to update note {note_id}: {error}")
 
-        new_front, changed = _update_furigana_classes(front, reviewed_kanji)
-        if changed:
-            try:
-                update_note(note_id, {"Front": new_front})
-                updated += 1
-            except Exception as e:
-                print(f"Warning: Failed to update note {note_id}: {e}")
-
-    return updated
+    return updated_count

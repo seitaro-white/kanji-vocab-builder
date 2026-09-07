@@ -3,15 +3,24 @@ vocab triage."""
 
 import types
 import unicodedata
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Literal, Optional, Tuple
 
 from InquirerPy import get_style, inquirer
 from InquirerPy.base.control import Choice
+from prompt_toolkit.application import Application
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.containers import HSplit, Window
+from prompt_toolkit.styles import Style
 
 from kanji_vocab_miner import kanji_jlpt
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.jlpt import LEVEL_COLORS, LevelWord
+from kanji_vocab_miner.vocab_models import PendingVocabItem
 
 
 REVIEW_KEYBINDINGS = {
@@ -25,51 +34,152 @@ DISCARD_SYMBOL = " "
 COMMIT_STYLE = get_style({"checkbox": "bold #98c379"}, style_override=False)
 
 
-def review_pending_words(
-    pending_words: List[JishoWord],
-    prompt_func: Optional[Callable[..., object]] = None,
-) -> Optional[List[JishoWord]]:
-    """
-    Show a checkbox review screen for pending words.
+ReviewAction = Literal[
+    "up", "down", "toggle_add", "toggle_recall", "enable_all", "disable_all"
+]
+
+
+@dataclass
+class ReviewResult:
+    """Return whether review was submitted together with its complete item state."""
+
+    submitted: bool
+    items: List[PendingVocabItem]
+
+
+def reduce_review_state(
+    items: List[PendingVocabItem], focus: int, action: ReviewAction
+) -> tuple[List[PendingVocabItem], int]:
+    """Return review state after one navigation or toggle action.
+
+    The input items are copied before modification so terminal rendering and
+    reducer tests do not depend on shared mutation. Recall remains stored when
+    Add is disabled, while enabling Recall also enables Add.
 
     Args:
-        pending_words: Words waiting to be committed.
-        prompt_func: Injectable prompt builder for testing. Defaults to
-            InquirerPy's checkbox prompt.
+        items: Current pending rows and their Add and Recall selections.
+        focus: Zero-based index of the focused row.
+        action: Navigation, per-row toggle, or bulk Add operation.
 
     Returns:
-        A list of words to commit, or None if the review was aborted.
-        An empty input list returns an empty list without prompting.
+        A copied item list and a focus index clamped to the available rows.
     """
-    if not pending_words:
-        return []
+    updated_items = deepcopy(items)
+    if not updated_items:
+        return updated_items, 0
 
-    if prompt_func is None:
-        prompt_func = inquirer.checkbox
+    bounded_focus = min(max(focus, 0), len(updated_items) - 1)
+    if action == "up":
+        return updated_items, max(0, bounded_focus - 1)
+    if action == "down":
+        return updated_items, min(len(updated_items) - 1, bounded_focus + 1)
+    if action == "toggle_add":
+        item = updated_items[bounded_focus]
+        item.add_enabled = not item.add_enabled
+    elif action == "toggle_recall":
+        item = updated_items[bounded_focus]
+        item.recall_enabled = not item.recall_enabled
+        if item.recall_enabled:
+            item.add_enabled = True
+    elif action == "enable_all":
+        for item in updated_items:
+            item.add_enabled = True
+    elif action == "disable_all":
+        for item in updated_items:
+            item.add_enabled = False
+    return updated_items, bounded_focus
 
-    prompt = prompt_func(
-        message="Review pending words",
-        instruction="Space=toggle  a=all  n=none  Enter=commit  Esc/q=abort",
-        choices=[
-            Choice(value=word, name=_format_choice(word), enabled=True)
-            for word in pending_words
-        ],
-        keybindings=REVIEW_KEYBINDINGS,
-        enabled_symbol=COMMIT_SYMBOL,
-        disabled_symbol=DISCARD_SYMBOL,
-        style=COMMIT_STYLE,
-        raise_keyboard_interrupt=True,
+
+def review_pending_words(
+    pending_items: List[PendingVocabItem],
+    run_application: Optional[Callable[[Application], ReviewResult]] = None,
+) -> ReviewResult:
+    """Display the dual-toggle commit review and return explicit submit state.
+
+    Args:
+        pending_items: Vocabulary items with their current Add and Recall choices.
+        run_application: Optional application runner used to isolate terminal IO in tests.
+
+    Returns:
+        The submitted or aborted result, including all edited item choices.
+    """
+    if not pending_items:
+        return ReviewResult(submitted=True, items=[])
+
+    items = deepcopy(pending_items)
+    focus = 0
+    key_bindings = KeyBindings()
+
+    def apply_action(action: ReviewAction) -> None:
+        nonlocal items, focus
+        items, focus = reduce_review_state(items, focus, action)
+
+    for key, action in (
+        ("up", "up"),
+        ("down", "down"),
+        (" ", "toggle_add"),
+        ("r", "toggle_recall"),
+        ("a", "enable_all"),
+        ("n", "disable_all"),
+    ):
+        key_bindings.add(key)(
+            lambda event, selected_action=action: apply_action(selected_action)
+        )
+
+    @key_bindings.add("enter")
+    def submit(event) -> None:
+        event.app.exit(result=ReviewResult(submitted=True, items=items))
+
+    @key_bindings.add("escape")
+    @key_bindings.add("q")
+    def abort(event) -> None:
+        event.app.exit(result=ReviewResult(submitted=False, items=items))
+
+    def render_rows() -> FormattedText:
+        fragments = [
+            ("class:header", "Add  Recall  Word (reading) — primary English definition\n")
+        ]
+        for index, item in enumerate(items):
+            if index == focus:
+                fragments.append(("[SetCursorPosition]", ""))
+            add_marker = "✓" if item.add_enabled else " "
+            recall_marker = "R" if item.recall_enabled else " "
+            definition = item.word.definitions[0] if item.word.definitions else ""
+            failure_detail = (
+                f" [last error: {item.last_error}]" if item.last_error else ""
+            )
+            row = (
+                f" {add_marker}     {recall_marker}     {item.word.expression} "
+                f"({item.word.kana}) — {definition}{failure_detail}\n"
+            )
+            style = "class:focus" if index == focus else ""
+            if not item.add_enabled:
+                style += " class:disabled"
+            fragments.append((style.strip(), row))
+        return FormattedText(fragments)
+
+    control = FormattedTextControl(text=render_rows, focusable=True)
+    body = Window(content=control, always_hide_cursor=True)
+    instructions = Window(
+        height=1,
+        content=FormattedTextControl(
+            "Space=Add  r=Recall  a=all  n=none  Enter=commit  Esc/q=abort"
+        ),
     )
-    try:
-        return prompt.execute()
-    except KeyboardInterrupt:
-        return None
-
-
-def _format_choice(word: JishoWord) -> str:
-    """Format a JishoWord as a display string for the review screen."""
-    definition = word.definitions[0] if word.definitions else ""
-    return f"{word.expression} ({word.kana}) — {definition}"
+    application = Application(
+        layout=Layout(HSplit([body, instructions]), focused_element=body),
+        key_bindings=key_bindings,
+        full_screen=True,
+        style=Style.from_dict(
+            {
+                "header": "bold",
+                "focus": "reverse",
+                "disabled": "fg:#767676",
+            }
+        ),
+    )
+    runner = run_application or (lambda app: app.run())
+    return runner(application)
 
 
 @dataclass

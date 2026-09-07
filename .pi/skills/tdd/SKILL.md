@@ -1,5 +1,5 @@
 ---
-name: td/d
+name: tdd
 description: Implement a software feature using red-green-refactor test driven development. Use when the user wants you to build a feature with tests
 ---
 

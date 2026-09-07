@@ -58,11 +58,44 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 **Commands:**
 - `n` - Look up the kanji on the card currently open in Anki Reviewer
 - `a` - Move the most recently looked-up kanji card to the top of its Anki deck
-- `c` - Commit selected words to Anki
+- `c` - Review and commit pending words to Anki
 - `q` - Quit the program
 - Type a kanji directly (e.g., `食`) - Search for words containing that kanji and show whether its Anki card has been reviewed
 - Type `@word` (e.g., `@食べる`) - Look up a specific word on Jisho
 - When in word selection mode, enter numbers or ranges (e.g., `1 3 5` or `1-5`) to select words to add
+
+### Vocabulary cards and commit review
+
+`kanji-vocab-miner setup` creates the required `MyJapaneseVocabularyV2` note
+type in the existing `KanjiVocabMiner-Vocabulary` deck. Existing notes using
+`MyJapaneseVocabulary` remain unchanged and continue to count during duplicate
+checks. Migration of legacy notes is intentionally deferred.
+
+New pending words default to **Add on** and **Recall off**. The commit review
+screen supports:
+
+- `Up`/`Down`: move between rows
+- `Space`: toggle Add for the focused row
+- `r`: toggle Recall; enabling Recall also enables Add
+- `a`/`n`: enable or disable Add for all rows without erasing Recall choices
+- `Enter`: commit Add-enabled rows and discard Add-disabled rows
+- `Esc`/`q`: abort while preserving pending rows and Recall choices
+
+Every committed note receives the existing Japanese-to-English recognition
+card. Enabling Recall also creates a Japanese-definition-to-Japanese-word card.
+The Japanese definition is fetched synchronously from Kotobank for every note,
+including recognition-only notes. Definitions prefer デジタル大辞泉 and fall
+back to 精選版 日本国語大辞典. Results are not cached. The normalized text,
+rendered cue, source name, and canonical source URL are stored on the note.
+Successful rows are committed even if another lookup or addition fails; failed
+rows remain pending with their Recall choice for retry. Existing expressions in
+either legacy or V2 notes are reported as already present and removed from the
+pending list.
+
+Cue furigana follows the same reviewed-kanji visibility rules as the vocabulary
+word. To enable recall later, set the note's `Recall` field to `1` in Anki. To
+disable it, clear `Recall`, then run **Tools → Empty Cards** because Anki keeps
+previously generated cards until empty cards are removed.
 
 ### Progress dashboard
 

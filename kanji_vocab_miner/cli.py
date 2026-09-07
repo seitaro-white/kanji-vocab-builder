@@ -23,6 +23,7 @@ from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.review_status import KanjiReviewStatus
+from kanji_vocab_miner.vocab_models import BatchAddResult, PendingVocabItem
 
 from jamdict import Jamdict
 from kanji_vocab_miner.render import console, info, success, error
@@ -106,46 +107,56 @@ def fetch_word_from_word(word: str) -> Optional[JishoWord]:
 
 
 def process_word_selection(
-    displayed_words: List[JishoWord], pending_words: List[JishoWord], selection: str
-) -> List[JishoWord]:
-    """
-    Process user selection of words to add to the pending list.
+    displayed_words: List[JishoWord],
+    pending_items: List[PendingVocabItem],
+    selection: str,
+) -> List[PendingVocabItem]:
+    """Add selected expressions to pending state without duplicates.
 
     Args:
-        displayed_words: The list of words currently displayed
-        pending_words: Current list of pending words
-        selection: The user's selection input
+        displayed_words: Words currently available by numeric position.
+        pending_items: Existing pending state and recall preferences.
+        selection: Space-separated indexes or ranges supplied by the user.
 
     Returns:
-        Updated list of pending words
+        The pending items with newly selected unique expressions appended.
     """
     if not displayed_words:
         click.echo("No words have been displayed yet. Press 'n' to fetch words first.")
-        return pending_words
+        return pending_items
 
     try:
         selected_indices = parse_integer_selection(selection)
-        newly_selected = []
+        newly_selected: List[PendingVocabItem] = []
+        pending_expressions = {item.word.expression for item in pending_items}
 
-        for idx in selected_indices:
-            if 1 <= idx <= len(displayed_words):
-                word = displayed_words[idx - 1]
-                pending_words.append(word)
-                newly_selected.append(word)
-            else:
-                click.echo(f"Invalid selection: {idx} - out of range.")
+        for index in selected_indices:
+            if not 1 <= index <= len(displayed_words):
+                click.echo(f"Invalid selection: {index} - out of range.")
+                continue
+
+            word = displayed_words[index - 1]
+            if word.expression in pending_expressions:
+                continue
+            item = PendingVocabItem(word=word)
+            pending_items.append(item)
+            newly_selected.append(item)
+            pending_expressions.add(word.expression)
 
         if newly_selected:
-            success(f"Added {len(newly_selected)} word(s) to pending list (total: {len(pending_words)})")
-            for word in newly_selected:
-                info(f"{word.expression} ({word.kana})")
+            success(
+                f"Added {len(newly_selected)} word(s) to pending list "
+                f"(total: {len(pending_items)})"
+            )
+            for item in newly_selected:
+                info(f"{item.word.expression} ({item.word.kana})")
 
     except ValueError:
         click.echo(
             "Invalid selection format. Please enter space-separated numbers (e.g., '1 3 5')."
         )
 
-    return pending_words
+    return pending_items
 
 
 def handle_next_card() -> Optional[str]:
@@ -170,42 +181,66 @@ def handle_next_card() -> Optional[str]:
     return kanji
 
 
-def add_pending_words_to_anki(pending_words: List[JishoWord], reviewed_kanji) -> None:
-    """Add pending words to Anki deck."""
-    if not pending_words:
-        info("No words to add.")
-        return
-
-    with console.status(f"[bold]Adding {len(pending_words)} words to Anki…[/bold]", spinner="bouncingBar"):
-        ankiconnect.add_vocab_note_to_deck(pending_words, reviewed_kanji=reviewed_kanji)
-
-    success(f"{len(pending_words)} words successfully added!")
+def add_pending_words_to_anki(
+    pending_items: List[PendingVocabItem],
+) -> BatchAddResult:
+    """Commit included pending items and return their actual outcomes."""
+    with console.status(
+        f"[bold]Adding {len(pending_items)} words to Anki…[/bold]",
+        spinner="bouncingBar",
+    ):
+        return ankiconnect.add_vocab_items(pending_items)
 
 
 def handle_review_and_commit(
-    pending_words: List[JishoWord], reviewed_kanji, is_quitting: bool
-) -> tuple[List[JishoWord], bool]:
-    """
-    Run the review screen and commit selected words.
+    pending_items: List[PendingVocabItem], is_quitting: bool
+) -> tuple[List[PendingVocabItem], bool]:
+    """Review pending choices, commit included rows, and retain failures.
+
+    Aborted reviews preserve all edited choices. Confirmed Add-off rows are
+    discarded, while successful and duplicate rows leave pending state. Failed
+    rows retain Recall and receive their failure message for a later retry.
 
     Args:
-        pending_words: Current pending words.
-        reviewed_kanji: Set of already reviewed kanji for AnkiConnect.
-        is_quitting: True if this review was triggered by the quit command.
+        pending_items: Current pending vocabulary and commit preferences.
+        is_quitting: Whether the quit command opened this review.
 
     Returns:
-        A tuple of (updated pending words, whether the main loop should continue).
+        Updated pending state and whether the interactive loop should continue.
     """
-    selected = review.review_pending_words(pending_words)
-    if selected is None:
-        return pending_words, True
+    review_result = review.review_pending_words(pending_items)
+    if not review_result.submitted:
+        return review_result.items, True
 
-    if not selected:
+    included_items = [
+        item for item in review_result.items if item.add_enabled
+    ]
+    if not included_items:
         info("No words selected to commit.")
         return [], not is_quitting
 
-    add_pending_words_to_anki(selected, reviewed_kanji)
-    return [], not is_quitting
+    batch_result = add_pending_words_to_anki(included_items)
+    failed_items: List[PendingVocabItem] = []
+    for failure in batch_result.failed:
+        failure.item.last_error = failure.message
+        failed_items.append(failure.item)
+        error(
+            f"{failure.item.word.expression}: {failure.stage} failed — "
+            f"{failure.message}"
+        )
+
+    success(
+        f"Added {len(batch_result.added)}; already existed "
+        f"{len(batch_result.skipped_duplicates)}; failed "
+        f"{len(batch_result.failed)}."
+    )
+    if failed_items:
+        info(
+            "Failed words remain pending. Review again to retry, disable Add to "
+            "discard, or abort to return to the command loop."
+        )
+    should_continue = bool(failed_items) or not is_quitting
+    return failed_items, should_continue
 
 
 def normalized_input(prompt: str) -> str:
@@ -351,7 +386,7 @@ def _sync_furigana_and_exit() -> None:
     with console.status("[bold]Syncing furigana on vocab cards…[/bold]", spinner="dots"):
         updated = ankiconnect.sync_vocab_furigana()
     if updated > 0:
-        success(f"Updated furigana on {updated} vocab card(s).")
+        success(f"Updated furigana on {updated} vocab note(s).")
     click.echo("Goodbye!")
     sys.exit(0)
 
@@ -371,16 +406,13 @@ def run_interactive():
             console.print()  # Empty line between errors
         sys.exit(1)
 
-    # Fetch reviewed kanji once at startup for use when adding new cards
-    reviewed_kanji = ankiconnect.get_reviewed_kanji()
-
-    displayed_words = []  # Store the last displayed word list
-    pending_words = []  # Store selected words to add to Anki later
+    displayed_words: List[JishoWord] = []
+    pending_items: List[PendingVocabItem] = []
     active_kanji: Optional[str] = None  # Latest successfully retrieved kanji
 
     while True:
         try:
-            user_input = get_user_input(len(pending_words))
+            user_input = get_user_input(len(pending_items))
 
             # Fetch new card and display words
             if user_input.lower() == "n":
@@ -399,26 +431,26 @@ def run_interactive():
 
             # Select words to add to pending list
             elif any(c.isdigit() for c in user_input):
-                pending_words = process_word_selection(
-                    displayed_words, pending_words, user_input
+                pending_items = process_word_selection(
+                    displayed_words, pending_items, user_input
                 )
 
             # Commit pending words to Anki
             elif user_input.lower() == "c":
-                if not pending_words:
+                if not pending_items:
                     info("No words to commit.")
                     continue
-                pending_words, continue_loop = handle_review_and_commit(
-                    pending_words, reviewed_kanji, is_quitting=False
+                pending_items, continue_loop = handle_review_and_commit(
+                    pending_items, is_quitting=False
                 )
                 if not continue_loop:
                     _sync_furigana_and_exit()
 
             # Quit the program
             elif user_input.lower() == "q":
-                if pending_words:
-                    pending_words, continue_loop = handle_review_and_commit(
-                        pending_words, reviewed_kanji, is_quitting=True
+                if pending_items:
+                    pending_items, continue_loop = handle_review_and_commit(
+                        pending_items, is_quitting=True
                     )
                     if continue_loop:
                         continue
@@ -443,8 +475,16 @@ def run_interactive():
                         default=True,
                     )
                     if add_confirm:
-                        pending_words.append(word)
-                        success(f"Added [bold]{word.expression}[/bold] to pending words.")
+                        pending_expressions = {
+                            item.word.expression for item in pending_items
+                        }
+                        if word.expression not in pending_expressions:
+                            pending_items.append(PendingVocabItem(word=word))
+                            success(
+                                f"Added [bold]{word.expression}[/bold] to pending words."
+                            )
+                        else:
+                            info(f"{word.expression} is already pending.")
 
                 else:
                     render.error(f"Word '{user_input}' not found in JmDict.")

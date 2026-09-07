@@ -102,6 +102,13 @@ def _normalized_text(node: Tag) -> str:
     return re.sub(r"\s+", " ", node.get_text("")).strip()
 
 
+def _split_numbered_senses(text: str) -> list[str]:
+    """Split the first two full-width numbered meanings in flattened text."""
+    if not re.match(r"^１\s", text):
+        return [text]
+    return re.split(r"(?=２\s)", text, maxsplit=1)
+
+
 def parse_kotobank_html(
     expression: str,
     requested_url: str,
@@ -136,7 +143,14 @@ def parse_kotobank_html(
         else:
             sense_nodes = [description]
 
-        senses = [text for node in sense_nodes if (text := _normalized_text(node))]
+        senses = []
+        for node in sense_nodes:
+            text = _normalized_text(node)
+            if text:
+                senses.extend(_split_numbered_senses(text))
+            if len(senses) >= 2:
+                break
+        senses = senses[:2]
 
         if not senses:
             continue

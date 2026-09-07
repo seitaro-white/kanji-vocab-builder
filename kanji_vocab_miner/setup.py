@@ -5,7 +5,6 @@ from typing import Tuple, List
 from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.config import (
     VOCAB_DECK_NAME,
-    VOCAB_NOTE_TYPE,
     VOCAB_NOTE_TYPE_V2,
     VOCAB_V2_FIELDS,
     load_config,
@@ -56,9 +55,9 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
     # 3. Check note type exists
     try:
         model_names = connect.send_request("modelNames")
-        if VOCAB_NOTE_TYPE not in model_names:
+        if VOCAB_NOTE_TYPE_V2 not in model_names:
             errors.append(
-                f"[red]✗ Note type '{VOCAB_NOTE_TYPE}' not found[/red]\n"
+                f"[red]✗ Note type '{VOCAB_NOTE_TYPE_V2}' not found[/red]\n"
                 f"  Run: [bold cyan]kanji-vocab-miner setup[/bold cyan] to create it"
             )
     except Exception:

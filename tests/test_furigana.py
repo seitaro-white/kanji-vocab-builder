@@ -80,7 +80,7 @@ def test_render_japanese_cue_preserves_multiple_sense_boundaries() -> None:
     rendered = render_japanese_cue(["猫。", "犬。"], set())
 
     assert rendered.count('<div class="sense">') == 2
-    assert "</div><div" in rendered
+    assert "</div><br><div" in rendered
 
 
 def test_update_furigana_visibility_updates_single_kanji_ruby() -> None:

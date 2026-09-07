@@ -113,7 +113,7 @@ def render_japanese_cue(senses: List[str], reviewed_kanji: Set[str]) -> str:
         )
         content += escape(sense[consumed_length:])
         rendered_senses.append(f'<div class="sense">{content}</div>')
-    return "".join(rendered_senses)
+    return "<br>".join(rendered_senses)
 
 
 def update_furigana_visibility(

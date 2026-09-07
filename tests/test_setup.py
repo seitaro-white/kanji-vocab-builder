@@ -9,8 +9,21 @@ from kanji_vocab_miner.setup import (
     create_note_type_v2,
     run_setup,
     update_note_type_v2,
+    validate_prerequisites,
 )
 from scripts.install_vocab_v2 import install_vocab_v2
+
+
+def test_prerequisites_require_v2_but_not_legacy_model() -> None:
+    """Production startup accepts a missing legacy model and requires V2."""
+    responses = [6, ["KanjiVocabMiner-Vocabulary", "All in One Kanji"], []]
+    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+        send_request.side_effect = responses
+        is_valid, errors = validate_prerequisites()
+
+    assert is_valid is False
+    assert any("MyJapaneseVocabularyV2" in error for error in errors)
+    assert all("'MyJapaneseVocabulary'" not in error for error in errors)
 
 
 def test_create_note_type_v2_uses_exact_field_order() -> None:

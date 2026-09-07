@@ -59,6 +59,24 @@ def test_parse_first_two_top_level_daijisen_senses() -> None:
     assert result.senses == ["第一の意味。", "第二の意味。"]
 
 
+def test_splits_full_width_numbered_definitions_in_one_node() -> None:
+    """Split numbered meanings when Kotobank does not use separate list items."""
+    html = """
+    <article class="dictype daijisen">
+      <section class="description">
+        １ 第一の意味。「用例」２ 第二の意味。「別の用例」
+      </section>
+    </article>
+    """
+
+    result = parse_kotobank_html("語", "https://kotobank.jp/word/%E8%AA%9E", html)
+
+    assert result.senses == [
+        "１ 第一の意味。「用例」",
+        "２ 第二の意味。「別の用例」",
+    ]
+
+
 def test_nested_examples_do_not_become_senses() -> None:
     """Exclude nested example lists from extracted senses."""
     html = """
