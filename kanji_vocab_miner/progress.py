@@ -6,9 +6,7 @@ from datetime import date
 from kanji_vocab_miner import kanji_jlpt
 from kanji_vocab_miner.jouyou_data import JOUYOU
 
-# N5 (easiest) first, N1 (hardest) last.
-LEVEL_ORDER: list[int] = [5, 4, 3, 2, 1]
-# The current kanji study goal is JLPT N2 and everything below it.
+# The current kanji study goal is JLPT N2 and everything below it, easiest first.
 KANJI_TARGET_LEVELS: list[int] = [5, 4, 3, 2]
 
 # Manually tracked textbook progress. Values are the section totals.
@@ -44,7 +42,7 @@ class VocabProgress:
 
 @dataclass
 class KanjiProgress:
-    levels: list[LevelBar]  # detail bars for every N-level, N5..N1
+    levels: list[LevelBar]  # detail bars for target levels, N5..N2
     known_total: int  # reviewed kanji within the N2 target
     total: int  # all kanji within the N2 target
     missing_from_deck: int  # target kanji not present in the kanji deck
@@ -130,17 +128,17 @@ def kanji_coverage(reviewed_kanji: set[str], all_deck_kanji: set[str]) -> KanjiP
     }
 
     unranked = 0
-    known_counts = {level: 0 for level in LEVEL_ORDER}
+    known_counts = {level: 0 for level in KANJI_TARGET_LEVELS}
     for kanji in reviewed_jouyou:
         level = level_index.get(kanji)
         if level is None:
             unranked += 1
-        else:
+        elif level in known_counts:
             known_counts[level] += 1
 
     levels = [
         LevelBar(level=level, known=known_counts[level], total=totals[level])
-        for level in LEVEL_ORDER
+        for level in KANJI_TARGET_LEVELS
     ]
 
     return KanjiProgress(

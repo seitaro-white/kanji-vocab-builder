@@ -26,13 +26,13 @@ def test_kanji_coverage_per_level_bars():
     result = progress.kanji_coverage(reviewed_kanji=reviewed, all_deck_kanji=reviewed)
     bars = {bar.level: bar for bar in result.levels}
 
-    # Detail bars still show every level, including N1.
-    assert [bar.level for bar in result.levels] == [5, 4, 3, 2, 1]
+    # Detail bars show only the current N2-and-below study target.
+    assert [bar.level for bar in result.levels] == [5, 4, 3, 2]
     # Totals match the embedded data.
     totals = kanji_jlpt.kanji_level_totals()
     assert bars[5].total == totals[5]
     assert bars[2].total == totals[2]
-    assert bars[1].total == totals[1]
+    assert 1 not in bars
     # Known counts land in the right level.
     assert bars[5].known == 1
     assert bars[3].known == 1
@@ -45,8 +45,7 @@ def test_kanji_coverage_excludes_n1_from_target():
     result = progress.kanji_coverage(reviewed_kanji=reviewed, all_deck_kanji=reviewed)
 
     assert result.known_total == 1
-    n1_bar = next(bar for bar in result.levels if bar.level == 1)
-    assert n1_bar.known == 1
+    assert all(bar.level != 1 for bar in result.levels)
 
 
 def test_kanji_coverage_unranked():

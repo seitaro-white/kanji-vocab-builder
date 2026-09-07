@@ -190,13 +190,24 @@ def _bar(known: int, total: int, colour: str, width: int = 24) -> Text:
     return bar
 
 
-def _progress_grid(rows: List[Tuple[str, int, int, str]]) -> Table:
-    """Build a label-and-bar grid from (label, known, total, colour) rows."""
+def _progress_grid(
+    rows: List[Tuple[str, int, int, str]], scale_totals: bool = False
+) -> Table:
+    """Build a label-and-bar grid from (label, known, total, colour) rows.
+
+    When ``scale_totals`` is enabled, each track's length represents its total
+    relative to the largest total in this grid. This lets detail rows share a
+    common quantity scale without coupling unrelated dashboard categories.
+    """
     grid = Table.grid(padding=(0, 2))
     grid.add_column(justify="right", style="bold chartreuse3", no_wrap=True)
     grid.add_column()
+    largest_total = max((total for _, _, total, _ in rows), default=0)
     for label, known, total, colour in rows:
-        grid.add_row(label, _bar(known, total, colour))
+        width = 24
+        if scale_totals and largest_total:
+            width = round(24 * total / largest_total)
+        grid.add_row(label, _bar(known, total, colour, width=width))
     return grid
 
 
@@ -205,7 +216,8 @@ def _manual_panel(
 ) -> None:
     """Render one manually tracked subject's section breakdown."""
     body = _progress_grid(
-        [(bar.label, bar.known, bar.total, colour) for bar in bars[1:]]
+        [(bar.label, bar.known, bar.total, colour) for bar in bars[1:]],
+        scale_totals=True,
     )
     console.print(
         Panel(
@@ -219,7 +231,11 @@ def _manual_panel(
 def progress_dashboard(
     kanji: KanjiProgress, manual: ManualProgress, vocab: VocabProgress
 ) -> None:
-    """Render overall progress followed by subject breakdown panels."""
+    """Render the exam countdown and overall progress with subject breakdowns."""
+    console.print(
+        f"[bold bright_blue]{countdown.format_jlpt_countdown()}[/bold bright_blue]"
+    )
+    console.print()
     reading_total = manual.reading[0]
     grammar_total = manual.grammar[0]
     console.print(
@@ -252,7 +268,8 @@ def progress_dashboard(
             [
                 (f"N{lb.level}", lb.known, lb.total, PROGRESS_COLORS["kanji"])
                 for lb in kanji.levels
-            ]
+            ],
+            scale_totals=True,
         )
     )
     kanji_body.add_row("")
