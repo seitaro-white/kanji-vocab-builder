@@ -4,10 +4,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from kanji_vocab_miner.config import (
+    FIELDS,
+    LEGACY_FIELDS,
+    LEGACY_VOCAB_NOTE_TYPE,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
+    VOCAB_NOTE_TYPE_V2,
     VOCAB_TAG,
-    FIELDS,
+    VOCAB_V2_FIELDS,
     load_config,
 )
 
@@ -50,3 +54,26 @@ def test_vocab_constants_defined():
     assert VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
     assert VOCAB_TAG == "kanji-vocab-miner"
     assert len(FIELDS) == 8  # Should have 8 fields
+
+
+def test_v2_fields_extend_legacy_fields_in_intended_order() -> None:
+    """V2 retains all legacy fields before its five additional fields."""
+    assert LEGACY_VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
+    assert VOCAB_NOTE_TYPE_V2 == "MyJapaneseVocabularyV2"
+    assert LEGACY_FIELDS is FIELDS
+    assert VOCAB_NOTE_TYPE == LEGACY_VOCAB_NOTE_TYPE
+    assert list(VOCAB_V2_FIELDS.values()) == [
+        "Front",
+        "Back",
+        "Expression",
+        "Kana Reading",
+        "Grammar",
+        "Definition",
+        "Additional Definitions",
+        "JLPT",
+        "JapaneseDefinition",
+        "JapaneseCue",
+        "Recall",
+        "DefinitionSource",
+        "DefinitionURL",
+    ]

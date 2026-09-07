@@ -14,6 +14,7 @@ from kanji_vocab_miner.config import (
     VOCAB_TAG,
     load_config,
 )
+from kanji_vocab_miner.furigana import update_furigana_visibility
 from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.utils import is_kanji
@@ -213,53 +214,19 @@ def reposition_card_to_top(card_id: int) -> None:
 
 
 def _update_furigana_classes(front_html: str, reviewed_kanji: Set[str]) -> Tuple[str, bool]:
-    """
-    Update <rt class="known"> on ruby elements based on reviewed_kanji.
-    Also migrates legacy Anki furigana notation (漢[reading]) to HTML.
-    Returns (updated_html, changed).
-    """
-    # Detect legacy Anki notation: kanji character followed by [reading]
-    if re.search(r'[\u4E00-\u9FFF]\[', front_html):
-        def migrate(m: re.Match) -> str:
-            kanji = m.group(1)
-            reading = m.group(2)
-            rt_class = ' class="known"' if kanji in reviewed_kanji else ''
-            return f'<ruby>{kanji}<rt{rt_class}>{reading}</rt></ruby>'
+    """Update ruby visibility, migrating legacy Anki furigana when needed."""
+    if re.search(r"[\u4e00-\u9fff]\[", front_html):
+        def migrate(match: re.Match[str]) -> str:
+            return f"<ruby>{match.group(1)}<rt>{match.group(2)}</rt></ruby>"
 
-        new_html = re.sub(r'([\u4E00-\u9FFF])\[([^\]]+)\]', migrate, front_html)
-        # Strip trailing spaces that the old format added after hiragana characters
-        new_html = re.sub(r'([\u3040-\u309F]) ', r'\1', new_html)
-        return new_html, True  # always changed: format migration
+        migrated = re.sub(
+            r"([\u4e00-\u9fff])\[([^\]]+)\]", migrate, front_html
+        )
+        migrated = re.sub(r"([\u3040-\u309f]) ", r"\1", migrated)
+        updated, _ = update_furigana_visibility(migrated, reviewed_kanji)
+        return updated, True
 
-    # New HTML format: update existing <rt> class attributes
-    if '<ruby>' not in front_html:
-        return front_html, False
-
-    changed = False
-
-    def update_rt(m: re.Match) -> str:
-        nonlocal changed
-        kanji = m.group(1)
-        existing_attrs = m.group(2)
-        reading = m.group(3)
-        is_known = 'class="known"' in existing_attrs or "class='known'" in existing_attrs
-        should_be_known = kanji in reviewed_kanji
-
-        if should_be_known == is_known:
-            return m.group(0)  # no change needed
-
-        changed = True
-        if should_be_known:
-            return f'<ruby>{kanji}<rt class="known">{reading}</rt></ruby>'
-        else:
-            return f'<ruby>{kanji}<rt>{reading}</rt></ruby>'
-
-    new_html = re.sub(
-        r'<ruby>([\u4E00-\u9FFF])<rt([^>]*)>(.*?)</rt></ruby>',
-        update_rt,
-        front_html,
-    )
-    return new_html, changed
+    return update_furigana_visibility(front_html, reviewed_kanji)
 
 
 def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
