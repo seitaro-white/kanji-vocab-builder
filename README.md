@@ -42,11 +42,23 @@ kanji-vocab-miner setup
 
 This installs `kanji-vocab-miner` globally so you can run it from any directory. If you don't have uv installed, follow the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-To update to the latest version:
+To update to the latest version, upgrade the tool and run setup again so Anki has
+the current V3 vocabulary note type and templates:
 
 ```bash
 uv tool upgrade kanji-vocab-miner
+kanji-vocab-miner setup
 ```
+
+A [DeepSeek API key](https://platform.deepseek.com/) is required when committing
+new vocabulary, but not for setup, searching, or reviewing pending words. Export
+it in the environment used to launch the tool:
+
+```bash
+export KANJI_VOCAB_MINER_LLM__API_KEY="your-api-key"
+```
+
+The key is environment-only. **Do not put it in `config.toml`.**
 
 
 ## Usage
@@ -66,10 +78,11 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 
 ### Vocabulary cards and commit review
 
-`kanji-vocab-miner setup` creates the required `MyJapaneseVocabularyV2` note
-type in the existing `KanjiVocabMiner-Vocabulary` deck. Existing notes using
-`MyJapaneseVocabulary` remain unchanged and continue to count during duplicate
-checks. Migration of legacy notes is intentionally deferred.
+Run `kanji-vocab-miner setup` after installing or upgrading. Setup creates or
+safely refreshes the required `MyJapaneseVocabularyV3` note type in the existing
+`KanjiVocabMiner-Vocabulary` deck. It does not migrate or regenerate existing
+cards. Legacy `MyJapaneseVocabulary` and `MyJapaneseVocabularyV2` notes remain
+unchanged in the deck.
 
 New pending words default to **Add on** and **Recall off**. The commit review
 screen supports:
@@ -81,21 +94,67 @@ screen supports:
 - `Enter`: commit Add-enabled rows and discard Add-disabled rows
 - `Esc`/`q`: abort while preserving pending rows and Recall choices
 
-Every committed note receives the existing Japanese-to-English recognition
-card. Enabling Recall also creates a Japanese-definition-to-Japanese-word card.
+Each newly committed V3 note receives a Japanese-to-English recognition card.
+Its back shows these sections in order:
+
+1. the primary Jisho dictionary definition;
+2. **Nuance** — one English sentence about usage beyond the short definition;
+3. **Example** — one short Japanese sentence, with the exact used form bold and
+   red (no translation or separate reading); and
+4. **Why these kanji** — a word-level explanation of the kanji, okurigana, or
+   the fact that no kanji applies.
+
+DeepSeek generates the three enrichment sections automatically during commit.
+Generation is grounded in the word's first dictionary definition and first part
+of speech. There is no generated-content preview or approval step. The existing
+recall card behavior is unchanged: enabling Recall also creates a
+Japanese-definition-to-Japanese-word card.
+
 The Japanese definition is fetched synchronously from Kotobank for every note,
 including recognition-only notes. Definitions prefer デジタル大辞泉 and fall
 back to 精選版 日本国語大辞典. Results are not cached. The normalized text,
 rendered cue, source name, and canonical source URL are stored on the note.
-Successful rows are committed even if another lookup or addition fails; failed
-rows remain pending with their Recall choice for retry. Existing expressions in
-either legacy or V2 notes are reported as already present and removed from the
-pending list.
+DeepSeek generation runs concurrently, while successful notes are written to
+Anki sequentially in the reviewed order.
+
+Each word gets at most three DeepSeek attempts, with short exponential backoff
+and validation feedback after an invalid response. If definition, furigana,
+enrichment, or Anki writing fails, that word is skipped while other successful
+rows can still be committed. Failed rows remain pending in reviewed order with
+their Recall choice for retry. If the API key is missing, all eligible
+nonduplicate rows fail clearly at enrichment and remain pending; the tool never
+falls back to creating V2 or unenriched V3 notes.
+
+Legacy, V2, and V3 expressions all participate in duplicate detection. Legacy
+and V2 notes remain in the deck and continue to participate in furigana sync
+when they contain compatible `Front` or `JapaneseCue` fields.
 
 Cue furigana follows the same reviewed-kanji visibility rules as the vocabulary
 word. To enable recall later, set the note's `Recall` field to `1` in Anki. To
 disable it, clear `Recall`, then run **Tools → Empty Cards** because Anki keeps
 previously generated cards until empty cards are removed.
+
+### DeepSeek enrichment settings
+
+Setup creates the default editable prompt at
+`~/.config/kanji-vocab-miner/enrichment-prompt.md` only when that file is
+absent. Existing prompt edits are never overwritten. Edit this file to change
+content guidance for nuance, examples, and kanji explanations. The application
+owns the structured response schema, validation, and safe example highlighting;
+the editable prompt does not replace that fixed contract.
+
+The prompt path and request concurrency are the only LLM settings in
+`~/.config/kanji-vocab-miner/config.toml`:
+
+```toml
+[llm]
+prompt_path = "~/.config/kanji-vocab-miner/enrichment-prompt.md"
+concurrency = 5
+```
+
+`concurrency` controls simultaneous DeepSeek generation requests, defaults to
+`5`, and accepts values from `1` through `10`. The API key must remain in
+`KANJI_VOCAB_MINER_LLM__API_KEY`; it is not a TOML setting.
 
 ### Progress dashboard
 
