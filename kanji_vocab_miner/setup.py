@@ -8,6 +8,7 @@ from kanji_vocab_miner.config import (
     VOCAB_NOTE_TYPE_V2,
     VOCAB_V2_FIELDS,
     load_config,
+    provision_default_prompt,
 )
 from kanji_vocab_miner.render import console
 
@@ -92,6 +93,13 @@ def run_setup():
     """
     console.print("[bold]Kanji Vocab Miner Setup[/bold]\n")
 
+    config = load_config()
+    try:
+        provision_default_prompt(config.llm.prompt_path)
+    except OSError as error:
+        console.print(f"[red]✗ Failed to provision enrichment prompt: {error}[/red]")
+        return False
+
     # 1. Test AnkiConnect
     console.print("[cyan]Testing AnkiConnect connection...[/cyan]")
     try:
@@ -144,7 +152,6 @@ def run_setup():
         return False
 
     # Success - check if kanji deck exists and provide appropriate message
-    config = load_config()
     kanji_deck_name = config.kanji_deck.name
 
     try:

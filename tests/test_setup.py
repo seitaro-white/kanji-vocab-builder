@@ -1,10 +1,11 @@
 """Tests for isolated Anki vocabulary model setup."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from kanji_vocab_miner.config import VOCAB_NOTE_TYPE_V2, VOCAB_V2_FIELDS
+from kanji_vocab_miner.config import AppConfig, VOCAB_NOTE_TYPE_V2, VOCAB_V2_FIELDS
 from kanji_vocab_miner.setup import (
     create_note_type_v2,
     run_setup,
@@ -12,6 +13,13 @@ from kanji_vocab_miner.setup import (
     validate_prerequisites,
 )
 from scripts.install_vocab_v2 import install_vocab_v2
+
+
+@pytest.fixture(autouse=True)
+def provision_prompt():
+    """Prevent setup tests from writing to the real user configuration directory."""
+    with patch("kanji_vocab_miner.setup.provision_default_prompt") as provision:
+        yield provision
 
 
 def test_prerequisites_require_v2_but_not_legacy_model() -> None:
@@ -121,6 +129,23 @@ def test_update_note_type_v2_rejects_incompatible_schema() -> None:
     send_request.assert_called_once_with(
         "modelFieldNames", modelName=VOCAB_NOTE_TYPE_V2
     )
+
+
+def test_run_setup_provisions_prompt_without_changing_anki_failure_semantics(
+    tmp_path, provision_prompt
+) -> None:
+    """Setup provisions the configured prompt and still returns false on Anki failure."""
+    config = AppConfig(llm={"prompt_path": tmp_path / "prompt.md"})
+    with (
+        patch("kanji_vocab_miner.setup.load_config", return_value=config),
+        patch("kanji_vocab_miner.setup.connect.send_request") as send_request,
+        patch("kanji_vocab_miner.setup.console.print"),
+    ):
+        send_request.side_effect = RuntimeError("Anki is unavailable")
+        assert run_setup() is False
+
+    provision_prompt.assert_called_once_with(Path(tmp_path / "prompt.md"))
+    send_request.assert_called_once_with("version")
 
 
 def test_run_setup_creates_only_v2_model_on_a_fresh_install() -> None:

@@ -1,7 +1,9 @@
 """Configuration management for kanji-vocab-miner."""
 
+from importlib import resources
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import tomllib
 from pydantic import BaseModel, Field
@@ -20,6 +22,13 @@ class KanjiDeckConfig(BaseModel):
     name: str = "All in One Kanji"
 
 
+class LLMConfig(BaseModel):
+    """Non-secret settings for vocabulary enrichment."""
+
+    prompt_path: Path = Path("~/.config/kanji-vocab-miner/enrichment-prompt.md")
+    concurrency: int = Field(default=5, ge=1, le=10)
+
+
 class AppConfig(BaseSettings):
     """Application configuration with environment variable support."""
 
@@ -29,6 +38,51 @@ class AppConfig(BaseSettings):
 
     ankiconnect: AnkiConnectConfig = Field(default_factory=AnkiConnectConfig)
     kanji_deck: KanjiDeckConfig = Field(default_factory=KanjiDeckConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+
+
+LLM_API_KEY_ENV_VAR = "KANJI_VOCAB_MINER_LLM__API_KEY"
+DEFAULT_PROMPT_RESOURCE = "resources/enrichment-prompt.md"
+
+
+def resolve_prompt_path(prompt_path: Union[Path, str]) -> Path:
+    """Expand a configured prompt path without requiring the path to exist."""
+    path = Path(prompt_path)
+    path_text = str(path)
+    if path_text == "~":
+        return Path.home()
+    if path_text.startswith("~/"):
+        return Path.home() / path_text[2:]
+    return path.expanduser()
+
+
+def get_llm_api_key() -> Optional[str]:
+    """Read the DeepSeek API key exclusively from the process environment."""
+    api_key = os.environ.get(LLM_API_KEY_ENV_VAR)
+    if api_key is None:
+        return None
+    return api_key.strip() or None
+
+
+def provision_default_prompt(prompt_path: Union[Path, str]) -> Path:
+    """Copy the packaged enrichment prompt when the destination is absent."""
+    destination = resolve_prompt_path(prompt_path)
+    if destination.exists():
+        return destination
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    prompt_bytes = (
+        resources.files("kanji_vocab_miner")
+        .joinpath(DEFAULT_PROMPT_RESOURCE)
+        .read_bytes()
+    )
+    try:
+        with destination.open("xb") as prompt_file:
+            prompt_file.write(prompt_bytes)
+    except FileExistsError:
+        # Another setup process provisioned the prompt after the existence check.
+        pass
+    return destination
 
 
 # Hardcoded vocabulary deck settings (created via setup command)
