@@ -11,6 +11,8 @@ from kanji_vocab_miner.jisho import KanjiSummary
 from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.progress import ManualProgressCounts
+from kanji_vocab_miner.review import ReviewResult
+from kanji_vocab_miner.vocab_models import AddFailure, BatchAddResult, PendingVocabItem
 
 
 def _word(expression: str, kana: str = "") -> JishoWord:
@@ -93,36 +95,59 @@ def test_review_level_aborts_without_marking(monkeypatch):
     assert added == []  # aborted before marking anything
 
 
-def test_handle_review_and_commit_aborts_keep_pending(monkeypatch):
-    """Aborting review leaves pending words untouched and continues the loop."""
-    words = [_word("学校", "がっこう")]
-    monkeypatch.setattr(cli.review, "review_pending_words", lambda pending: None)
-    committed: list = []
+def test_process_word_selection_deduplicates_pending_expressions() -> None:
+    """Selecting the same expression twice creates one pending item."""
+    word = _word("学校", "がっこう")
+
+    pending = cli.process_word_selection([word], [], "1 1")
+
+    assert len(pending) == 1
+    assert pending[0].word is word
+
+
+def test_handle_review_and_commit_aborts_keep_edited_pending(monkeypatch):
+    """Aborting review keeps every row and its edited recall preference."""
+    item = PendingVocabItem(word=_word("学校", "がっこう"))
+    edited = PendingVocabItem(word=item.word, recall_enabled=True)
     monkeypatch.setattr(
-        cli, "add_pending_words_to_anki", lambda words, **k: committed.extend(words)
+        cli.review,
+        "review_pending_words",
+        lambda pending: ReviewResult(submitted=False, items=[edited]),
     )
 
-    pending, continue_loop = cli.handle_review_and_commit(words, [], is_quitting=False)
+    pending, continue_loop = cli.handle_review_and_commit([item], is_quitting=False)
 
-    assert pending == words
+    assert pending == [edited]
     assert continue_loop is True
-    assert committed == []
 
 
-def test_handle_review_and_commit_commits_selected_and_exits_on_quit(monkeypatch):
-    """On quit, committing selected words clears pending and exits the loop."""
-    words = [_word("学校", "がっこう"), _word("大学", "だいがく")]
-    monkeypatch.setattr(cli.review, "review_pending_words", lambda pending: [words[0]])
-    committed: list = []
+def test_handle_review_and_commit_partitions_outcomes(monkeypatch):
+    """Confirmed discards and successes leave while failures retain their choices."""
+    discarded = PendingVocabItem(word=_word("大学", "だいがく"), add_enabled=False)
+    added = PendingVocabItem(word=_word("学校", "がっこう"))
+    failed = PendingVocabItem(word=_word("覚える", "おぼえる"), recall_enabled=True)
     monkeypatch.setattr(
-        cli, "add_pending_words_to_anki", lambda words, rk: committed.extend(words)
+        cli.review,
+        "review_pending_words",
+        lambda pending: ReviewResult(True, [discarded, added, failed]),
+    )
+    monkeypatch.setattr(
+        cli.ankiconnect,
+        "add_vocab_items",
+        lambda items: BatchAddResult(
+            added=[added],
+            failed=[AddFailure(failed, "definition", "definition missing")],
+        ),
     )
 
-    pending, continue_loop = cli.handle_review_and_commit(words, set(), is_quitting=True)
+    pending, continue_loop = cli.handle_review_and_commit(
+        [discarded, added, failed], is_quitting=True
+    )
 
-    assert pending == []
-    assert continue_loop is False
-    assert committed == [words[0]]
+    assert pending == [failed]
+    assert pending[0].recall_enabled is True
+    assert pending[0].last_error == "definition missing"
+    assert continue_loop is True
 
 
 def test_fetch_words_from_kanji_renders_unknown_status_on_anki_error(monkeypatch):
@@ -208,17 +233,28 @@ def test_failed_lookup_disables_a(monkeypatch):
     assert moved == []
 
 
-def test_handle_review_and_commit_commits_selected_and_continues_on_commit(monkeypatch):
-    """On commit command, committing selected words clears pending and continues."""
-    words = [_word("学校", "がっこう")]
-    monkeypatch.setattr(cli.review, "review_pending_words", lambda pending: words)
-    committed: list = []
+def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, capsys):
+    """Commit messaging is derived from structured connector outcomes."""
+    added = PendingVocabItem(word=_word("学校", "がっこう"))
+    duplicate = PendingVocabItem(word=_word("大学", "だいがく"))
     monkeypatch.setattr(
-        cli, "add_pending_words_to_anki", lambda words, rk: committed.extend(words)
+        cli.review,
+        "review_pending_words",
+        lambda pending: ReviewResult(True, [added, duplicate]),
+    )
+    monkeypatch.setattr(
+        cli.ankiconnect,
+        "add_vocab_items",
+        lambda items: BatchAddResult(added=[added], skipped_duplicates=[duplicate]),
     )
 
-    pending, continue_loop = cli.handle_review_and_commit(words, set(), is_quitting=False)
+    pending, continue_loop = cli.handle_review_and_commit(
+        [added, duplicate], is_quitting=False
+    )
 
+    output = capsys.readouterr().out
     assert pending == []
     assert continue_loop is True
-    assert committed == words
+    assert "Added 1" in output
+    assert "already existed 1" in output
+    assert "failed 0" in output

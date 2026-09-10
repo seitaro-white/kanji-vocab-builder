@@ -5,85 +5,81 @@ from unittest.mock import MagicMock
 from kanji_vocab_miner import review
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.jlpt import LevelWord
+from kanji_vocab_miner.vocab_models import PendingVocabItem
 
 
 def _word(expression: str, kana: str = "") -> JishoWord:
     return JishoWord(expression=expression, kana=kana, jlpt=5, definitions=["dummy"])
 
 
-def test_review_empty_pending_returns_empty_list():
-    """An empty pending list should short-circuit without prompting."""
+def _pending(expression: str, kana: str = "") -> PendingVocabItem:
+    return PendingVocabItem(word=_word(expression, kana))
+
+
+def test_review_empty_pending_returns_submitted_result() -> None:
+    """An empty pending list short-circuits as a confirmed empty review."""
     result = review.review_pending_words([])
-    assert result == []
+
+    assert result.submitted is True
+    assert result.items == []
 
 
-def test_review_returns_selected_words():
-    """When the user confirms a subset, return exactly those words."""
-    words = [_word("学校", "がっこう"), _word("大学", "だいがく")]
-    mock_prompt = MagicMock()
-    mock_prompt.execute.return_value = [words[0]]
+def test_space_toggles_only_add() -> None:
+    """Space changes inclusion without changing the stored recall preference."""
+    items = [PendingVocabItem(word=_word("学校"), recall_enabled=True)]
+
+    updated, focus = review.reduce_review_state(items, 0, "toggle_add")
+
+    assert updated[0].add_enabled is False
+    assert updated[0].recall_enabled is True
+    assert focus == 0
+
+
+def test_recall_toggle_enables_add() -> None:
+    """Enabling recall also includes the item in the commit."""
+    items = [PendingVocabItem(word=_word("学校"), add_enabled=False)]
+
+    updated, _ = review.reduce_review_state(items, 0, "toggle_recall")
+
+    assert updated[0].recall_enabled is True
+    assert updated[0].add_enabled is True
+
+
+def test_bulk_add_actions_preserve_recall() -> None:
+    """Bulk add controls never erase per-row recall preferences."""
+    items = [PendingVocabItem(word=_word("学校"), recall_enabled=True)]
+
+    disabled, _ = review.reduce_review_state(items, 0, "disable_all")
+    enabled, _ = review.reduce_review_state(disabled, 0, "enable_all")
+
+    assert disabled[0].add_enabled is False
+    assert disabled[0].recall_enabled is True
+    assert enabled[0].add_enabled is True
+    assert enabled[0].recall_enabled is True
+
+
+def test_focus_stays_within_rows() -> None:
+    """Navigation clamps focus at the first and last review rows."""
+    items = [_pending("学校"), _pending("大学")]
+
+    _, top = review.reduce_review_state(items, 0, "up")
+    _, bottom = review.reduce_review_state(items, 1, "down")
+
+    assert top == 0
+    assert bottom == 1
+
+
+def test_review_adapter_returns_abort_with_edited_items() -> None:
+    """The adapter returns edited state explicitly when review is aborted."""
+    items = [_pending("学校")]
 
     result = review.review_pending_words(
-        words, prompt_func=lambda **kwargs: mock_prompt
+        items,
+        run_application=lambda application: review.ReviewResult(False, items),
     )
 
-    assert result == [words[0]]
-    assert mock_prompt.execute.called
-
-
-def test_review_returns_none_on_abort():
-    """When the user aborts, return None to signal cancellation."""
-    words = [_word("学校", "がっこう")]
-    mock_prompt = MagicMock()
-    mock_prompt.execute.side_effect = KeyboardInterrupt
-
-    result = review.review_pending_words(
-        words, prompt_func=lambda **kwargs: mock_prompt
-    )
-
-    assert result is None
-
-
-def test_format_choice_includes_expression_and_reading():
-    """Choice text should display the word and its kana reading."""
-    word = _word("学校", "がっこう")
-    assert review._format_choice(word) == "学校 (がっこう) — dummy"
-
-
-def test_format_choice_includes_definition():
-    """Choice text should include the first definition for context."""
-    word = JishoWord(
-        expression="学校",
-        kana="がっこう",
-        jlpt=5,
-        definitions=["school", "educational institution"],
-    )
-    assert review._format_choice(word) == "学校 (がっこう) — school"
-
-
-def test_review_defaults_to_inquirerpy_checkbox(monkeypatch):
-    """When no prompt_func is injected, InquirerPy checkbox is used with all choices enabled."""
-    words = [_word("学校", "がっこう")]
-    mock_prompt = MagicMock()
-    mock_prompt.execute.return_value = words
-
-    captured: dict = {}
-
-    def fake_checkbox(**kwargs):
-        captured.update(kwargs)
-        return mock_prompt
-
-    monkeypatch.setattr(review, "inquirer", type("FakeInquirer", (), {"checkbox": staticmethod(fake_checkbox)})())
-
-    result = review.review_pending_words(words)
-
-    assert result == words
-    assert len(captured["choices"]) == 1
-    assert captured["choices"][0].name == "学校 (がっこう) — dummy"
-    assert captured["choices"][0].enabled is True
-    assert captured["enabled_symbol"] == review.COMMIT_SYMBOL
-    assert captured["disabled_symbol"] == review.DISCARD_SYMBOL
-    assert captured["style"].dict["checkbox"] == "bold #98c379"
+    assert result.submitted is False
+    assert result.items is items
 
 
 def test_build_level_review_items_finds_hardest_kanji():

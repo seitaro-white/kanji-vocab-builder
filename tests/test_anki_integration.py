@@ -9,8 +9,11 @@ These are real integration tests that interact with Anki.
 """
 
 import pytest
+
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE, FIELDS
+from kanji_vocab_miner.config import FIELDS, VOCAB_DECK_NAME, VOCAB_NOTE_TYPE
+
+pytestmark = pytest.mark.integration
 
 
 # Test deck/note type names (use unique names to avoid conflicts)

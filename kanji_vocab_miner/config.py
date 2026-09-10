@@ -33,7 +33,9 @@ class AppConfig(BaseSettings):
 
 # Hardcoded vocabulary deck settings (created via setup command)
 VOCAB_DECK_NAME = "KanjiVocabMiner-Vocabulary"
-VOCAB_NOTE_TYPE = "MyJapaneseVocabulary"
+LEGACY_VOCAB_NOTE_TYPE = "MyJapaneseVocabulary"
+VOCAB_NOTE_TYPE_V2 = "MyJapaneseVocabularyV2"
+VOCAB_NOTE_TYPE = LEGACY_VOCAB_NOTE_TYPE
 VOCAB_TAG = "kanji-vocab-miner"
 
 # Hardcoded field names (note type created with these fields)
@@ -46,6 +48,15 @@ FIELDS = {
     "definition": "Definition",
     "additional_definitions": "Additional Definitions",
     "jlpt": "JLPT",
+}
+LEGACY_FIELDS = FIELDS
+VOCAB_V2_FIELDS = {
+    **LEGACY_FIELDS,
+    "japanese_definition": "JapaneseDefinition",
+    "japanese_cue": "JapaneseCue",
+    "recall": "Recall",
+    "definition_source": "DefinitionSource",
+    "definition_url": "DefinitionURL",
 }
 
 
