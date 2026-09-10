@@ -130,8 +130,9 @@ def test_provision_default_prompt_creates_missing_parent_and_file(tmp_path) -> N
     assert result == destination
     assert destination.is_file()
     content = destination.read_text(encoding="utf-8")
-    assert "primary dictionary sense" in content
+    assert "register, connotation" in content
     assert "Why these kanji" in content
+    assert "application separately" in content
 
 
 def test_provision_default_prompt_preserves_existing_bytes(tmp_path) -> None:

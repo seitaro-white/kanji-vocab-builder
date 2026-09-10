@@ -18,15 +18,20 @@ DEEPSEEK_RESPONSES_ENDPOINT = "https://api.deepseek.com/responses"
 DEEPSEEK_MODEL = "deepseek-flash"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_ATTEMPTS = 3
-FIXED_INSTRUCTIONS = """Return only structured JSON matching the supplied schema.
-Ground all content in the supplied primary dictionary sense and part of speech.
-Write one concise English nuance sentence beyond the short definition.
-Write one short, natural Japanese example adapted to the word's difficulty. Return
-both the plain-text sentence and the exact surface form occurring in it. Do not
-include a translation, reading, HTML, or Markdown.
-Explain why the word uses its kanji, covering compound components, kanji with
-okurigana, or a single kanji as applicable. If the word has no kanji, state that
-plainly. All fields must be non-empty plain text.
+FIXED_INSTRUCTIONS = """Return only JSON matching the supplied schema, with no
+additional properties. Treat the supplied primary definition and part of speech
+as the authoritative sense.
+
+Contract requirements:
+- nuance: exactly one non-empty English sentence.
+- example_sentence: exactly one short, natural, learner-appropriate Japanese
+  sentence, without a translation or separate reading.
+- example_target: only the exact surface form used in example_sentence; it must
+  occur there verbatim.
+- kanji_explanation: cover compound components, kanji with okurigana, or a
+  single kanji as applicable; if no kanji applies, state that plainly.
+
+All values must be non-empty plain text. Do not return HTML or Markdown.
 """
 
 

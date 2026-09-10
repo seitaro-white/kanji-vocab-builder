@@ -124,6 +124,9 @@ def test_generate_sends_structured_primary_sense_request(tmp_path) -> None:
     assert request["timeout"] == 30.0
     body = request["json"]
     assert body["model"] == "deepseek-flash"
+    assert "Contract requirements:" in body["instructions"]
+    assert "example_target" in body["instructions"]
+    assert "register, connotation" not in body["instructions"]
     assert body["text"]["format"]["type"] == "json_schema"
     assert body["text"]["format"]["name"] == "vocab_enrichment"
     assert body["text"]["format"]["schema"]["additionalProperties"] is False
