@@ -1,3 +1,4 @@
+from html import escape
 import json
 import re
 from datetime import date, datetime
@@ -12,10 +13,13 @@ from kanji_vocab_miner.config import (
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
     VOCAB_NOTE_TYPE_V2,
+    VOCAB_NOTE_TYPE_V3,
     VOCAB_TAG,
     VOCAB_V2_FIELDS,
+    VOCAB_V3_FIELDS,
     load_config,
 )
+from kanji_vocab_miner.enrichment import VocabEnrichment, render_example
 from kanji_vocab_miner.furigana import (
     render_japanese_cue,
     update_furigana_visibility,
@@ -308,6 +312,34 @@ def prepare_note_v2(
         "tags": [VOCAB_TAG],
         "options": {"allowDuplicate": False},
     }
+
+
+def _render_plain_text(value: str) -> str:
+    """Escape model-generated plain text and preserve line breaks safely."""
+    return escape(value).replace("\n", "<br>")
+
+
+def prepare_note_v3(
+    item: PendingVocabItem,
+    japanese_definition: JapaneseDefinition,
+    front: str,
+    japanese_cue: str,
+    enrichment: VocabEnrichment,
+) -> Dict[str, Any]:
+    """Serialize prepared V2 data and validated enrichment into a V3 note."""
+    note = prepare_note_v2(item, japanese_definition, front, japanese_cue)
+    note["modelName"] = VOCAB_NOTE_TYPE_V3
+    note["fields"] = {
+        **note["fields"],
+        VOCAB_V3_FIELDS["nuance"]: _render_plain_text(enrichment.nuance),
+        VOCAB_V3_FIELDS["example"]: render_example(enrichment).replace(
+            "\n", "<br>"
+        ),
+        VOCAB_V3_FIELDS["kanji_explanation"]: _render_plain_text(
+            enrichment.kanji_explanation
+        ),
+    }
+    return note
 
 
 def add_vocab_items(

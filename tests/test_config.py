@@ -14,8 +14,10 @@ from kanji_vocab_miner.config import (
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
     VOCAB_NOTE_TYPE_V2,
+    VOCAB_NOTE_TYPE_V3,
     VOCAB_TAG,
     VOCAB_V2_FIELDS,
+    VOCAB_V3_FIELDS,
     get_llm_api_key,
     load_config,
     provision_default_prompt,
@@ -128,6 +130,15 @@ def test_vocab_constants_defined():
     assert VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
     assert VOCAB_TAG == "kanji-vocab-miner"
     assert len(FIELDS) == 8  # Should have 8 fields
+
+
+def test_v3_fields_extend_v2_fields_in_exact_order() -> None:
+    assert VOCAB_NOTE_TYPE_V3 == "MyJapaneseVocabularyV3"
+    assert list(VOCAB_V3_FIELDS.values()) == list(VOCAB_V2_FIELDS.values()) + [
+        "Nuance",
+        "Example",
+        "KanjiExplanation",
+    ]
 
 
 def test_v2_fields_extend_legacy_fields_in_intended_order() -> None:

@@ -5,11 +5,19 @@ from unittest.mock import patch
 
 import pytest
 
-from kanji_vocab_miner.config import AppConfig, VOCAB_NOTE_TYPE_V2, VOCAB_V2_FIELDS
+from kanji_vocab_miner.config import (
+    AppConfig,
+    VOCAB_NOTE_TYPE_V2,
+    VOCAB_NOTE_TYPE_V3,
+    VOCAB_V2_FIELDS,
+    VOCAB_V3_FIELDS,
+)
 from kanji_vocab_miner.setup import (
     create_note_type_v2,
+    create_note_type_v3,
     run_setup,
     update_note_type_v2,
+    update_note_type_v3,
     validate_prerequisites,
 )
 from scripts.install_vocab_v2 import install_vocab_v2
@@ -22,15 +30,16 @@ def provision_prompt():
         yield provision
 
 
-def test_prerequisites_require_v2_but_not_legacy_model() -> None:
-    """Production startup accepts a missing legacy model and requires V2."""
-    responses = [6, ["KanjiVocabMiner-Vocabulary", "All in One Kanji"], []]
+def test_prerequisites_require_v3_but_not_older_models() -> None:
+    """Production startup requires V3, independently of legacy and V2."""
+    responses = [6, ["KanjiVocabMiner-Vocabulary", "All in One Kanji"], [VOCAB_NOTE_TYPE_V2]]
     with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
         send_request.side_effect = responses
         is_valid, errors = validate_prerequisites()
 
     assert is_valid is False
-    assert any("MyJapaneseVocabularyV2" in error for error in errors)
+    assert any("MyJapaneseVocabularyV3" in error for error in errors)
+    assert all("'MyJapaneseVocabularyV2'" not in error for error in errors)
     assert all("'MyJapaneseVocabulary'" not in error for error in errors)
 
 
@@ -148,8 +157,8 @@ def test_run_setup_provisions_prompt_without_changing_anki_failure_semantics(
     send_request.assert_called_once_with("version")
 
 
-def test_run_setup_creates_only_v2_model_on_a_fresh_install() -> None:
-    """Fresh setup has no legacy-model compatibility branch."""
+def test_run_setup_creates_only_v3_model_on_a_fresh_install() -> None:
+    """Fresh setup creates V3 without mutating older models."""
     responses = [6, 123, [], 456, ["All in One Kanji"]]
     with (
         patch("kanji_vocab_miner.setup.connect.send_request") as send_request,
@@ -164,7 +173,7 @@ def test_run_setup_creates_only_v2_model_on_a_fresh_install() -> None:
         if call.args[0] in {"createModel", "updateModelTemplates", "updateModelStyling"}
     ]
     assert len(model_mutations) == 1
-    assert model_mutations[0].kwargs["modelName"] == VOCAB_NOTE_TYPE_V2
+    assert model_mutations[0].kwargs["modelName"] == VOCAB_NOTE_TYPE_V3
 
 
 def test_one_off_installer_adds_v2_model_to_existing_vocab_deck() -> None:
@@ -184,13 +193,13 @@ def test_one_off_installer_adds_v2_model_to_existing_vocab_deck() -> None:
     ]
 
 
-def test_run_setup_updates_existing_v2_model() -> None:
-    """Setup validates and refreshes an installed V2 model."""
+def test_run_setup_updates_existing_v3_model() -> None:
+    """Setup validates and refreshes an installed V3 model only."""
     responses = [
         6,
         123,
-        [VOCAB_NOTE_TYPE_V2],
-        list(VOCAB_V2_FIELDS.values()),
+        [VOCAB_NOTE_TYPE_V2, VOCAB_NOTE_TYPE_V3],
+        list(VOCAB_V3_FIELDS.values()),
         None,
         None,
         ["All in One Kanji"],
@@ -209,7 +218,50 @@ def test_run_setup_updates_existing_v2_model() -> None:
     ]
     assert model_mutations
     assert all(
-        call.kwargs.get("modelName") == VOCAB_NOTE_TYPE_V2
-        or call.kwargs.get("model", {}).get("name") == VOCAB_NOTE_TYPE_V2
+        call.kwargs.get("modelName") == VOCAB_NOTE_TYPE_V3
+        or call.kwargs.get("model", {}).get("name") == VOCAB_NOTE_TYPE_V3
         for call in model_mutations
     )
+
+
+def test_create_note_type_v3_uses_exact_fields_templates_and_css() -> None:
+    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+        create_note_type_v3()
+
+    kwargs = send_request.call_args.kwargs
+    assert kwargs["modelName"] == VOCAB_NOTE_TYPE_V3
+    assert kwargs["inOrderFields"] == list(VOCAB_V3_FIELDS.values())
+    recognition, recall = kwargs["cardTemplates"]
+    assert recognition["Front"] == '<div class="japanese">{{Front}}</div>'
+    back = recognition["Back"]
+    assert back.index("{{Back}}") < back.index("Nuance") < back.index("Example") < back.index("Why these kanji")
+    for field in ("Nuance", "Example", "KanjiExplanation"):
+        assert "{{#" + field + "}}" in back
+        assert "{{/" + field + "}}" in back
+    assert recall == create_v2_templates()[1]
+    assert ".example-target" in kwargs["css"]
+    assert "color: red" in kwargs["css"]
+    assert "font-weight: bold" in kwargs["css"]
+
+
+def create_v2_templates():
+    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+        create_note_type_v2()
+    return send_request.call_args.kwargs["cardTemplates"]
+
+
+def test_update_note_type_v3_validates_before_mutating_only_v3() -> None:
+    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+        send_request.side_effect = [list(VOCAB_V3_FIELDS.values()), None, None]
+        update_note_type_v3()
+
+    assert send_request.call_args_list[0].kwargs == {"modelName": VOCAB_NOTE_TYPE_V3}
+    assert all(call.kwargs["model"]["name"] == VOCAB_NOTE_TYPE_V3 for call in send_request.call_args_list[1:])
+
+
+def test_update_note_type_v3_rejects_incompatible_schema_before_mutation() -> None:
+    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+        send_request.return_value = list(VOCAB_V2_FIELDS.values())
+        with pytest.raises(ValueError, match="incompatible fields"):
+            update_note_type_v3()
+    send_request.assert_called_once_with("modelFieldNames", modelName=VOCAB_NOTE_TYPE_V3)

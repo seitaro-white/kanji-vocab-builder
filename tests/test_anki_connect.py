@@ -537,3 +537,39 @@ def test_prepare_note():
         "options": {"allowDuplicate": False},
     }
     assert prepared_note_minimal == expected_note_minimal
+
+
+def test_prepare_note_v3_builds_exact_safe_payload() -> None:
+    from kanji_vocab_miner.enrichment import VocabEnrichment
+
+    item = PendingVocabItem(
+        word=JishoWord(
+            expression="学校", kana="がっこう", jlpt=5,
+            definitions=["school", "institution"], parts_of_speech=["Noun"]
+        ), recall_enabled=True,
+    )
+    definition = JapaneseDefinition(
+        expression="学校", senses=["教育を行う所。"], source_name="辞書",
+        source_url="https://example.test/学校",
+    )
+    enrichment = VocabEnrichment(
+        nuance='Formal & useful\n"context"',
+        example_sentence="私は<学校>へ行く。",
+        example_target="学校",
+        kanji_explanation="学ぶ & 校舎\n組み合わせ",
+    )
+
+    note = connect.prepare_note_v3(item, definition, "front", "cue", enrichment)
+
+    assert note["modelName"] == "MyJapaneseVocabularyV3"
+    assert list(note["fields"]) == [
+        "Front", "Back", "Expression", "Kana Reading", "Grammar", "Definition",
+        "Additional Definitions", "JLPT", "JapaneseDefinition", "JapaneseCue",
+        "Recall", "DefinitionSource", "DefinitionURL", "Nuance", "Example",
+        "KanjiExplanation",
+    ]
+    assert note["fields"]["Nuance"] == "Formal &amp; useful<br>&quot;context&quot;"
+    assert note["fields"]["Example"] == (
+        "私は&lt;<strong class=\"example-target\">学校</strong>&gt;へ行く。"
+    )
+    assert note["fields"]["KanjiExplanation"] == "学ぶ &amp; 校舎<br>組み合わせ"

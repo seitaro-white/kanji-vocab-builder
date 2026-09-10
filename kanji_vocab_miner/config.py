@@ -89,6 +89,7 @@ def provision_default_prompt(prompt_path: Union[Path, str]) -> Path:
 VOCAB_DECK_NAME = "KanjiVocabMiner-Vocabulary"
 LEGACY_VOCAB_NOTE_TYPE = "MyJapaneseVocabulary"
 VOCAB_NOTE_TYPE_V2 = "MyJapaneseVocabularyV2"
+VOCAB_NOTE_TYPE_V3 = "MyJapaneseVocabularyV3"
 VOCAB_NOTE_TYPE = LEGACY_VOCAB_NOTE_TYPE
 VOCAB_TAG = "kanji-vocab-miner"
 
@@ -111,6 +112,12 @@ VOCAB_V2_FIELDS = {
     "recall": "Recall",
     "definition_source": "DefinitionSource",
     "definition_url": "DefinitionURL",
+}
+VOCAB_V3_FIELDS = {
+    **VOCAB_V2_FIELDS,
+    "nuance": "Nuance",
+    "example": "Example",
+    "kanji_explanation": "KanjiExplanation",
 }
 
 

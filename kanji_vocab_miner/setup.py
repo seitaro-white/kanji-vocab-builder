@@ -6,7 +6,9 @@ from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.config import (
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE_V2,
+    VOCAB_NOTE_TYPE_V3,
     VOCAB_V2_FIELDS,
+    VOCAB_V3_FIELDS,
     load_config,
     provision_default_prompt,
 )
@@ -56,9 +58,9 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
     # 3. Check note type exists
     try:
         model_names = connect.send_request("modelNames")
-        if VOCAB_NOTE_TYPE_V2 not in model_names:
+        if VOCAB_NOTE_TYPE_V3 not in model_names:
             errors.append(
-                f"[red]✗ Note type '{VOCAB_NOTE_TYPE_V2}' not found[/red]\n"
+                f"[red]✗ Note type '{VOCAB_NOTE_TYPE_V3}' not found[/red]\n"
                 f"  Run: [bold cyan]kanji-vocab-miner setup[/bold cyan] to create it"
             )
     except Exception:
@@ -130,25 +132,25 @@ def run_setup():
             console.print(f"[red]✗ Failed to create deck: {e}[/red]")
             return False
 
-    # 3. Create or safely refresh the V2 model.
+    # 3. Create or safely refresh the V3 model.
     try:
         model_names = connect.send_request("modelNames")
     except Exception as e:
         console.print(f"[red]✗ Failed to inspect note types: {e}[/red]")
         return False
 
-    console.print(f"[cyan]Configuring note type: {VOCAB_NOTE_TYPE_V2}...[/cyan]")
+    console.print(f"[cyan]Configuring note type: {VOCAB_NOTE_TYPE_V3}...[/cyan]")
     try:
-        if VOCAB_NOTE_TYPE_V2 in model_names:
-            update_note_type_v2()
-            console.print("[green]✓[/green] V2 templates and CSS updated\n")
+        if VOCAB_NOTE_TYPE_V3 in model_names:
+            update_note_type_v3()
+            console.print("[green]✓[/green] V3 templates and CSS updated\n")
         else:
-            create_note_type_v2()
+            create_note_type_v3()
             console.print(
-                f"[green]✓[/green] Note type '{VOCAB_NOTE_TYPE_V2}' created\n"
+                f"[green]✓[/green] Note type '{VOCAB_NOTE_TYPE_V3}' created\n"
             )
     except Exception as e:
-        console.print(f"[red]✗ Failed to configure V2 note type: {e}[/red]")
+        console.print(f"[red]✗ Failed to configure V3 note type: {e}[/red]")
         return False
 
     # Success - check if kanji deck exists and provide appropriate message
@@ -269,6 +271,90 @@ def _v2_recall_template() -> dict:
             "{{DefinitionSource}}</a></div>"
         ),
     }
+
+
+def _v3_recognition_template() -> dict:
+    return {
+        "Name": "Recognition",
+        "Front": _v2_recognition_template()["Front"],
+        "Back": (
+            '<div class="show-all-furigana">{{FrontSide}}</div>\n\n'
+            '<hr id=answer>\n\n{{Back}}\n'
+            '{{#Nuance}}<div class="enrichment-section">'
+            '<div class="enrichment-label">Nuance</div>{{Nuance}}</div>{{/Nuance}}\n'
+            '{{#Example}}<div class="enrichment-section">'
+            '<div class="enrichment-label">Example</div>{{Example}}</div>{{/Example}}\n'
+            '{{#KanjiExplanation}}<div class="enrichment-section">'
+            '<div class="enrichment-label">Why these kanji</div>'
+            '{{KanjiExplanation}}</div>{{/KanjiExplanation}}'
+        ),
+    }
+
+
+def _v3_note_type_css() -> str:
+    return _v2_note_type_css() + """
+
+.enrichment-section {
+    margin-top: 1em;
+    line-height: 1.5;
+}
+
+.enrichment-label {
+    color: #777;
+    font-size: 0.65em;
+    font-weight: bold;
+    margin-bottom: 0.25em;
+    text-transform: uppercase;
+}
+
+.example-target {
+    color: red;
+    font-weight: bold;
+}
+"""
+
+
+def create_note_type_v3() -> None:
+    """Create the isolated V3 vocabulary note type via AnkiConnect."""
+    connect.send_request(
+        "createModel",
+        modelName=VOCAB_NOTE_TYPE_V3,
+        inOrderFields=list(VOCAB_V3_FIELDS.values()),
+        css=_v3_note_type_css(),
+        cardTemplates=[_v3_recognition_template(), _v2_recall_template()],
+    )
+
+
+def update_note_type_v3() -> None:
+    """Validate and update only the existing V3 templates and styling."""
+    actual_fields = connect.send_request(
+        "modelFieldNames", modelName=VOCAB_NOTE_TYPE_V3
+    )
+    expected_fields = list(VOCAB_V3_FIELDS.values())
+    if actual_fields != expected_fields:
+        raise ValueError(
+            f"Note type '{VOCAB_NOTE_TYPE_V3}' has incompatible fields. "
+            f"Expected {expected_fields}, received {actual_fields}."
+        )
+
+    templates = [_v3_recognition_template(), _v2_recall_template()]
+    connect.send_request(
+        "updateModelTemplates",
+        model={
+            "name": VOCAB_NOTE_TYPE_V3,
+            "templates": {
+                template["Name"]: {
+                    "Front": template["Front"],
+                    "Back": template["Back"],
+                }
+                for template in templates
+            },
+        },
+    )
+    connect.send_request(
+        "updateModelStyling",
+        model={"name": VOCAB_NOTE_TYPE_V3, "css": _v3_note_type_css()},
+    )
 
 
 def create_note_type_v2() -> None:
