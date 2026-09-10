@@ -153,8 +153,17 @@ concurrency = 5
 ```
 
 `concurrency` controls simultaneous DeepSeek generation requests, defaults to
-`5`, and accepts values from `1` through `10`. The API key must remain in
-`KANJI_VOCAB_MINER_LLM__API_KEY`; it is not a TOML setting.
+`5`, and accepts values from `1` through `10`. The API key is not a TOML setting.
+Set it in the process environment, or put the following in a `.env` file in the
+current working directory (the repository `.gitignore` excludes this file):
+
+```dotenv
+KANJI_VOCAB_MINER_LLM__API_KEY="your-api-key"
+```
+
+An explicitly exported environment variable takes precedence over `.env`. When
+running `uv run kanji-vocab-miner` from the repository root, the local `.env`
+file is loaded automatically.
 
 ### Progress dashboard
 

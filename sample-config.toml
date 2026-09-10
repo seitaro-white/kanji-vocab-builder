@@ -22,5 +22,6 @@ prompt_path = "~/.config/kanji-vocab-miner/enrichment-prompt.md"
 # Maximum simultaneous DeepSeek generation requests (allowed range: 1-10).
 concurrency = 5
 
-# The API key is environment-only and must not be added to this TOML file:
-# export KANJI_VOCAB_MINER_LLM__API_KEY="your-api-key"
+# The API key must not be added to this TOML file. Export it or place it in a
+# .env file in the directory where you launch the tool:
+# KANJI_VOCAB_MINER_LLM__API_KEY="your-api-key"

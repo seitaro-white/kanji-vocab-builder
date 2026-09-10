@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import tomllib
+from dotenv import dotenv_values
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -57,9 +58,13 @@ def resolve_prompt_path(prompt_path: Union[Path, str]) -> Path:
 
 
 def get_llm_api_key() -> Optional[str]:
-    """Read the DeepSeek API key exclusively from the process environment."""
+    """Read the DeepSeek API key from the environment or the local .env file."""
     api_key = os.environ.get(LLM_API_KEY_ENV_VAR)
     if api_key is None:
+        dotenv_path = Path.cwd() / ".env"
+        if dotenv_path.is_file():
+            api_key = dotenv_values(dotenv_path).get(LLM_API_KEY_ENV_VAR)
+    if not isinstance(api_key, str):
         return None
     return api_key.strip() or None
 

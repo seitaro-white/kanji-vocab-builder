@@ -74,13 +74,14 @@ def test_resolve_prompt_path_expands_tilde_with_current_home(tmp_path) -> None:
     assert resolved == tmp_path / ".config" / "custom-prompt.md"
 
 
-def test_llm_api_key_is_environment_only(tmp_path, monkeypatch) -> None:
-    """The secret is read directly from the environment, never the TOML model."""
+def test_llm_api_key_is_not_read_from_toml(tmp_path, monkeypatch) -> None:
+    """The secret is never accepted as part of the TOML configuration model."""
     config_file = tmp_path / "config.toml"
     config_file.write_text(
         '[llm]\napi_key = "toml-secret"\n', encoding="utf-8"
     )
     monkeypatch.delenv("KANJI_VOCAB_MINER_LLM__API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
 
     with patch("kanji_vocab_miner.config.get_config_path", return_value=config_file):
         config = load_config()
@@ -88,7 +89,28 @@ def test_llm_api_key_is_environment_only(tmp_path, monkeypatch) -> None:
     assert not hasattr(config.llm, "api_key")
     assert get_llm_api_key() is None
 
+
+def test_llm_api_key_is_read_from_current_directory_dotenv(
+    tmp_path, monkeypatch
+) -> None:
+    """A repository-local .env supplies the key without shell setup."""
+    (tmp_path / ".env").write_text(
+        'KANJI_VOCAB_MINER_LLM__API_KEY="dotenv-secret"\n', encoding="utf-8"
+    )
+    monkeypatch.delenv("KANJI_VOCAB_MINER_LLM__API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    assert get_llm_api_key() == "dotenv-secret"
+
+
+def test_llm_api_key_environment_overrides_dotenv(tmp_path, monkeypatch) -> None:
+    """An explicitly exported key takes precedence over a local .env value."""
+    (tmp_path / ".env").write_text(
+        "KANJI_VOCAB_MINER_LLM__API_KEY=dotenv-secret\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KANJI_VOCAB_MINER_LLM__API_KEY", "environment-secret")
+
     assert get_llm_api_key() == "environment-secret"
 
 
