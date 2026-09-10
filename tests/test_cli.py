@@ -12,7 +12,12 @@ from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.progress import ManualProgressCounts
 from kanji_vocab_miner.review import ReviewResult
-from kanji_vocab_miner.vocab_models import AddFailure, BatchAddResult, PendingVocabItem
+from kanji_vocab_miner.vocab_models import (
+    AddFailure,
+    BatchAddResult,
+    CommitProgressEvent,
+    PendingVocabItem,
+)
 
 
 def _word(expression: str, kana: str = "") -> JishoWord:
@@ -134,7 +139,7 @@ def test_handle_review_and_commit_partitions_outcomes(monkeypatch):
     monkeypatch.setattr(
         cli.ankiconnect,
         "add_vocab_items",
-        lambda items: BatchAddResult(
+        lambda items, **kwargs: BatchAddResult(
             added=[added],
             failed=[AddFailure(failed, "definition", "definition missing")],
         ),
@@ -245,7 +250,9 @@ def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, cap
     monkeypatch.setattr(
         cli.ankiconnect,
         "add_vocab_items",
-        lambda items: BatchAddResult(added=[added], skipped_duplicates=[duplicate]),
+        lambda items, **kwargs: BatchAddResult(
+            added=[added], skipped_duplicates=[duplicate]
+        ),
     )
 
     pending, continue_loop = cli.handle_review_and_commit(
@@ -258,3 +265,108 @@ def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, cap
     assert "Added 1" in output
     assert "already existed 1" in output
     assert "failed 0" in output
+
+
+def test_add_pending_words_uses_one_progress_and_terminal_counts(monkeypatch):
+    items = [
+        PendingVocabItem(word=_word("学校", "がっこう")),
+        PendingVocabItem(word=_word("大学", "だいがく")),
+    ]
+    progress_instances = []
+
+    class FakeProgress:
+        def __init__(self, *columns, **kwargs):
+            self.columns = columns
+            self.updates = []
+            self.tasks = []
+            progress_instances.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def add_task(self, description, total):
+            self.tasks.append((description, total))
+            return 7
+
+        def update(self, task_id, **kwargs):
+            self.updates.append((task_id, kwargs))
+
+    def fake_add(pending, on_progress):
+        on_progress(
+            CommitProgressEvent(
+                phase="duplicate",
+                completed=1,
+                total=2,
+                item=pending[0],
+                outcome="duplicate",
+            )
+        )
+        on_progress(
+            CommitProgressEvent(
+                phase="anki",
+                completed=2,
+                total=2,
+                item=pending[1],
+                outcome="added",
+            )
+        )
+        return BatchAddResult(
+            added=[pending[1]], skipped_duplicates=[pending[0]]
+        )
+
+    monkeypatch.setattr(cli, "Progress", FakeProgress)
+    monkeypatch.setattr(cli.ankiconnect, "add_vocab_items", fake_add)
+
+    result = cli.add_pending_words_to_anki(items)
+
+    assert len(progress_instances) == 1
+    assert result.added == [items[1]]
+    assert progress_instances[0].tasks == [
+        ("Checking existing vocabulary…", 2)
+    ]
+    assert [update[1]["completed"] for update in progress_instances[0].updates] == [
+        1,
+        2,
+        2,
+    ]
+    assert (
+        progress_instances[0].updates[-1][1]["description"]
+        == "Vocabulary commit complete."
+    )
+
+
+def test_enrichment_failures_are_reported_and_retained_in_reviewed_order(
+    monkeypatch, capsys
+):
+    first = PendingVocabItem(word=_word("最初"), recall_enabled=True)
+    second = PendingVocabItem(word=_word("次"))
+    monkeypatch.setattr(
+        cli.review,
+        "review_pending_words",
+        lambda pending: ReviewResult(True, [first, second]),
+    )
+    monkeypatch.setattr(
+        cli,
+        "add_pending_words_to_anki",
+        lambda items: BatchAddResult(
+            failed=[
+                AddFailure(first, "enrichment", "provider rejected output"),
+                AddFailure(second, "anki", "Anki unavailable"),
+            ]
+        ),
+    )
+
+    pending, continue_loop = cli.handle_review_and_commit(
+        [first, second], is_quitting=True
+    )
+
+    output = capsys.readouterr().out
+    assert pending == [first, second]
+    assert pending[0].recall_enabled is True
+    assert pending[0].last_error == "provider rejected output"
+    assert "最初: enrichment failed" in output
+    assert "Added 0; already existed 0; failed 2." in output
+    assert continue_loop is True

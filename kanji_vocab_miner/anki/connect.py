@@ -1,7 +1,8 @@
+from dataclasses import dataclass
+from datetime import date, datetime
 from html import escape
 import json
 import re
-from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -9,6 +10,7 @@ from tqdm import tqdm
 
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.config import (
+    AppConfig,
     FIELDS,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
@@ -17,9 +19,16 @@ from kanji_vocab_miner.config import (
     VOCAB_TAG,
     VOCAB_V2_FIELDS,
     VOCAB_V3_FIELDS,
+    get_llm_api_key,
     load_config,
+    resolve_prompt_path,
 )
-from kanji_vocab_miner.enrichment import VocabEnrichment, render_example
+from kanji_vocab_miner.enrichment import (
+    DeepSeekEnrichmentClient,
+    VocabEnrichment,
+    generate_enrichments,
+    render_example,
+)
 from kanji_vocab_miner.furigana import (
     render_japanese_cue,
     update_furigana_visibility,
@@ -31,6 +40,10 @@ from kanji_vocab_miner.utils import is_kanji
 from kanji_vocab_miner.vocab_models import (
     AddFailure,
     BatchAddResult,
+    CommitPhase,
+    CommitProgressCallback,
+    CommitProgressEvent,
+    CommitTerminalOutcome,
     PendingVocabItem,
 )
 
@@ -342,60 +355,195 @@ def prepare_note_v3(
     return note
 
 
+@dataclass(frozen=True)
+class _PreparedVocabItem:
+    """Carry one reviewed row and its deterministic pre-enrichment data."""
+
+    index: int
+    item: PendingVocabItem
+    definition: JapaneseDefinition
+    front: str
+    japanese_cue: str
+
+
 def add_vocab_items(
-    items: List[PendingVocabItem], client: Optional[KotobankClient] = None
+    items: List[PendingVocabItem],
+    client: Optional[KotobankClient] = None,
+    enrichment_client: Optional[DeepSeekEnrichmentClient] = None,
+    on_progress: Optional[CommitProgressCallback] = None,
+    config: Optional[AppConfig] = None,
 ) -> BatchAddResult:
-    """Commit included vocabulary sequentially and classify each outcome.
+    """Commit included vocabulary through ordered preparation and write phases.
 
-    A deck-wide expression read happens immediately before processing. Existing
-    expressions are treated as satisfied without requesting a definition. Each
-    remaining item proceeds through definition lookup, furigana rendering, and
-    Anki addition in that order so a failure can be retained at its exact stage.
+    Duplicate classification and deterministic dictionary/furigana preparation
+    happen before bounded concurrent enrichment. Successful V3 notes are then
+    serialized and written to Anki sequentially in the original reviewed order.
 
-    Args:
-        items: Included pending items in the user's chosen order.
-        client: Optional Kotobank client, primarily for external-service isolation.
-
-    Returns:
-        Structured successes, failures, and already-existing expressions.
+    A supplied enrichment client is treated as the provider dependency (and is
+    useful for isolated tests). Otherwise the environment-only API key and the
+    configured prompt path are used to construct the production client.
     """
-    result = BatchAddResult()
+    total = len(items)
+    completed = 0
+    added: List[Tuple[int, PendingVocabItem]] = []
+    duplicates: List[Tuple[int, PendingVocabItem]] = []
+    failures: List[Tuple[int, AddFailure]] = []
+
+    def emit_progress(
+        phase: CommitPhase,
+        item: Optional[PendingVocabItem] = None,
+        outcome: Optional[CommitTerminalOutcome] = None,
+    ) -> None:
+        nonlocal completed
+        if outcome is not None:
+            completed += 1
+        if on_progress is not None:
+            on_progress(
+                CommitProgressEvent(
+                    phase=phase,
+                    completed=completed,
+                    total=total,
+                    item=item,
+                    outcome=outcome,
+                )
+            )
+
+    def build_result() -> BatchAddResult:
+        return BatchAddResult(
+            added=[item for _, item in sorted(added)],
+            failed=[failure for _, failure in sorted(failures)],
+            skipped_duplicates=[item for _, item in sorted(duplicates)],
+        )
+
+    emit_progress("duplicate")
     existing_expressions = get_vocab_expressions()
+    eligible: List[Tuple[int, PendingVocabItem]] = []
+    for index, item in enumerate(items):
+        if item.word.expression in existing_expressions:
+            duplicates.append((index, item))
+            emit_progress("duplicate", item, "duplicate")
+        else:
+            eligible.append((index, item))
+
+    if not eligible:
+        return build_result()
+
+    app_config = config or get_config()
+    if enrichment_client is None:
+        api_key = get_llm_api_key()
+        if api_key is None:
+            message = (
+                "Missing KANJI_VOCAB_MINER_LLM__API_KEY; set it before "
+                "committing vocabulary."
+            )
+            for index, item in eligible:
+                failures.append(
+                    (index, AddFailure(item, "enrichment", message))
+                )
+                emit_progress("enrichment", item, "failed")
+            return build_result()
+        enrichment_client = DeepSeekEnrichmentClient(
+            api_key=api_key,
+            prompt_path=resolve_prompt_path(app_config.llm.prompt_path),
+        )
+
     reviewed_kanji = get_reviewed_kanji()
     kotobank_client = client or KotobankClient()
-
-    for item in items:
+    prepared_items: List[_PreparedVocabItem] = []
+    for index, item in eligible:
         expression = item.word.expression
-        if expression in existing_expressions:
-            result.skipped_duplicates.append(item)
-            continue
-
+        emit_progress("definition", item)
         try:
             definition = kotobank_client.lookup(expression)
         except Exception as error:
-            result.failed.append(AddFailure(item, "definition", str(error)))
+            failures.append(
+                (index, AddFailure(item, "definition", str(error)))
+            )
+            emit_progress("definition", item, "failed")
             continue
 
+        emit_progress("furigana", item)
         try:
             front = fetch_jisho_word_furigana(expression, reviewed_kanji)
-            japanese_cue = render_japanese_cue(definition.senses, reviewed_kanji)
-            note = prepare_note_v2(item, definition, front, japanese_cue)
+            japanese_cue = render_japanese_cue(
+                definition.senses, reviewed_kanji
+            )
         except Exception as error:
-            result.failed.append(AddFailure(item, "furigana", str(error)))
+            failures.append((index, AddFailure(item, "furigana", str(error))))
+            emit_progress("furigana", item, "failed")
             continue
 
+        prepared_items.append(
+            _PreparedVocabItem(
+                index=index,
+                item=item,
+                definition=definition,
+                front=front,
+                japanese_cue=japanese_cue,
+            )
+        )
+
+    if not prepared_items:
+        return build_result()
+
+    emit_progress("enrichment")
+    enrichment_outcomes = generate_enrichments(
+        [prepared.item for prepared in prepared_items],
+        enrichment_client,
+        max_workers=app_config.llm.concurrency,
+        on_complete=lambda item: emit_progress("enrichment", item),
+    )
+
+    enriched_items: List[Tuple[_PreparedVocabItem, VocabEnrichment]] = []
+    for prepared, outcome in zip(prepared_items, enrichment_outcomes):
+        if outcome.enrichment is None:
+            message = str(outcome.error or "Unknown enrichment failure")
+            failures.append(
+                (
+                    prepared.index,
+                    AddFailure(prepared.item, "enrichment", message),
+                )
+            )
+            emit_progress("enrichment", prepared.item, "failed")
+        else:
+            enriched_items.append((prepared, outcome.enrichment))
+
+    for prepared, enrichment in enriched_items:
+        emit_progress("furigana", prepared.item)
+        try:
+            note = prepare_note_v3(
+                prepared.item,
+                prepared.definition,
+                prepared.front,
+                prepared.japanese_cue,
+                enrichment,
+            )
+        except Exception as error:
+            failures.append(
+                (
+                    prepared.index,
+                    AddFailure(prepared.item, "furigana", str(error)),
+                )
+            )
+            emit_progress("furigana", prepared.item, "failed")
+            continue
+
+        emit_progress("anki", prepared.item)
         try:
             send_request(
                 "addNote", note=note | {"deckName": VOCAB_DECK_NAME}
             )
         except Exception as error:
-            result.failed.append(AddFailure(item, "anki", str(error)))
+            failures.append(
+                (prepared.index, AddFailure(prepared.item, "anki", str(error)))
+            )
+            emit_progress("anki", prepared.item, "failed")
             continue
 
-        result.added.append(item)
-        existing_expressions.add(expression)
+        added.append((prepared.index, prepared.item))
+        emit_progress("anki", prepared.item, "added")
 
-    return result
+    return build_result()
 
 
 def add_vocab_note_to_deck(

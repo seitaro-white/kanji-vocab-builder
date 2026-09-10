@@ -5,6 +5,7 @@ from typing import List, Optional
 import click
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.formatted_text import HTML
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kanji_vocab_miner.anki import connect as ankiconnect
 
@@ -23,7 +24,11 @@ from kanji_vocab_miner.utils import parse_integer_selection, is_kanji, is_kotoba
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.review_status import KanjiReviewStatus
-from kanji_vocab_miner.vocab_models import BatchAddResult, PendingVocabItem
+from kanji_vocab_miner.vocab_models import (
+    BatchAddResult,
+    CommitProgressEvent,
+    PendingVocabItem,
+)
 
 from jamdict import Jamdict
 from kanji_vocab_miner.render import console, info, success, error
@@ -184,12 +189,41 @@ def handle_next_card() -> Optional[str]:
 def add_pending_words_to_anki(
     pending_items: List[PendingVocabItem],
 ) -> BatchAddResult:
-    """Commit included pending items and return their actual outcomes."""
-    with console.status(
-        f"[bold]Adding {len(pending_items)} words to Anki…[/bold]",
-        spinner="bouncingBar",
-    ):
-        return ankiconnect.add_vocab_items(pending_items)
+    """Commit included pending items with one progress display."""
+    phase_descriptions = {
+        "duplicate": "Checking existing vocabulary…",
+        "definition": "Preparing dictionary definitions…",
+        "furigana": "Preparing furigana…",
+        "enrichment": "Generating vocabulary enrichment…",
+        "anki": "Writing vocabulary notes to Anki…",
+    }
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        console=console,
+    ) as commit_progress:
+        task_id = commit_progress.add_task(
+            "Checking existing vocabulary…", total=len(pending_items)
+        )
+
+        def update_progress(event: CommitProgressEvent) -> None:
+            commit_progress.update(
+                task_id,
+                description=phase_descriptions[event.phase],
+                completed=event.completed,
+            )
+
+        result = ankiconnect.add_vocab_items(
+            pending_items, on_progress=update_progress
+        )
+        commit_progress.update(
+            task_id,
+            description="Vocabulary commit complete.",
+            completed=len(pending_items),
+        )
+        return result
 
 
 def handle_review_and_commit(
