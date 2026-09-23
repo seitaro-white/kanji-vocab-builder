@@ -78,24 +78,23 @@ def _render_aligned_token(
     return "".join(rendered) if reading_position == len(reading) else None
 
 
+def render_token_furigana(
+    surface: str, reading: str | None, reviewed_kanji: Set[str] | None = None
+) -> str:
+    """Render one surface with aligned ruby, falling back to whole-token ruby."""
+    reviewed_kanji = reviewed_kanji or set()
+    if not _KANJI_RE.search(surface) or not reading or reading == "*":
+        return escape(surface)
+
+    normalized_reading = _to_hiragana(reading)
+    aligned = _render_aligned_token(surface, normalized_reading, reviewed_kanji)
+    return aligned or _ruby(surface, normalized_reading, reviewed_kanji)
+
+
 def _render_token(token: UnidicNode, reviewed_kanji: Set[str]) -> str:
     """Render one Fugashi token as escaped text or owned ruby HTML."""
-    surface = str(token)
-    leading_space = escape(token.white_space)
-
-    if not _KANJI_RE.search(surface):
-        return leading_space + escape(surface)
-
-    raw_reading = token.feature.kana
-    # UniDic uses "*" as a sentinel when a feature has no dictionary value.
-    # Unknown kanji are therefore preserved rather than given a guessed reading.
-    if not raw_reading or raw_reading == "*":
-        return leading_space + escape(surface)
-
-    reading = _to_hiragana(raw_reading)
-    aligned = _render_aligned_token(surface, reading, reviewed_kanji)
-    return leading_space + (
-        aligned if aligned is not None else _ruby(surface, reading, reviewed_kanji)
+    return escape(token.white_space) + render_token_furigana(
+        str(token), token.feature.kana, reviewed_kanji
     )
 
 

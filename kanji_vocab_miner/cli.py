@@ -344,6 +344,14 @@ def setup():
     sys.exit(0 if success else 1)
 
 
+@jisho_anki.command(name="web")
+def run_web() -> None:
+    """Start the localhost furigana article reader."""
+    from kanji_vocab_miner.web import create_app
+
+    create_app().run(host="127.0.0.1", port=8766, debug=False)
+
+
 @jisho_anki.command()
 def stats():
     """Show kanji, Reading, Grammar, and core vocabulary progress."""

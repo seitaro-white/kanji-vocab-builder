@@ -63,6 +63,23 @@ def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
     assert rendered[0][2].known == 4425
 
 
+def test_web_command_binds_localhost_without_debug(monkeypatch):
+    """The reader never exposes Flask to the LAN or enables debug mode."""
+    from kanji_vocab_miner import web
+
+    run_options = []
+    monkeypatch.setattr(
+        web.Flask,
+        "run",
+        lambda self, **kwargs: run_options.append(kwargs),
+    )
+
+    result = CliRunner().invoke(cli.jisho_anki, ["web"])
+
+    assert result.exit_code == 0, result.output
+    assert run_options == [{"host": "127.0.0.1", "port": 8766, "debug": False}]
+
+
 def test_review_level_rejects_invalid_level():
     result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N99"])
     assert result.exit_code == 1

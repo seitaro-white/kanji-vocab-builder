@@ -76,6 +76,37 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 - Type `@word` (e.g., `@食べる`) - Look up a specific word on Jisho
 - When in word selection mode, enter numbers or ranges (e.g., `1 3 5` or `1-5`) to select words to add
 
+### Furigana article reader
+
+Start the localhost-only web reader with Anki Desktop and AnkiConnect running:
+
+```bash
+kanji-vocab-miner web
+# Open http://127.0.0.1:8766
+```
+
+Paste up to 50,000 characters of plain Japanese text. The result colours
+unknown words using the bundled, unofficial JLPT N5–N1 vocabulary data; a
+**Highlight known words** toggle can extend those colours to known vocabulary.
+You can show furigana for unknown words only, for every word, or for no words.
+Runs of blank lines are reduced to one blank line between paragraphs. Below
+the article, an unknown-vocabulary list groups dictionary forms from N5 through
+N1, followed by unlisted words. Entries show their article frequency and are
+sorted by descending frequency within each level; ties retain first-appearance
+order. **Start Over** returns to an empty editor.
+
+A token is treated as known when its normalized dictionary identity matches an
+`Expression` in the configured Anki vocabulary deck or an entry in
+`~/.config/kanji-vocab-miner/known_vocab.txt`. The reader reloads both sources
+on every submission, so Anki must remain available. If AnkiConnect cannot be
+reached, the reader blocks the result rather than presenting incomplete known
+status.
+
+Matching is morphological-token based. Inflected single-token words can match
+their dictionary form, but multi-token expressions are not merged (for example,
+`勉強する` may be analyzed as `勉強` and `する`). JLPT vocabulary data is
+unofficial and incomplete; unlisted words remain uncoloured.
+
 ### Vocabulary cards and commit review
 
 Run `kanji-vocab-miner setup` after installing or upgrading. Setup creates or
