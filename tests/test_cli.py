@@ -33,6 +33,15 @@ def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
     counts = ManualProgressCounts(
         vocab_baseline=4400,
         vocab_tracking_start=date(2026, 9, 3),
+        reading_i_total=41,
+        reading_ii_total=29,
+        reading_iii_total=11,
+        grammar_i_total=10,
+        grammar_ii_total=11,
+        grammar_iii_total=5,
+        grammar_iv_total=7,
+        grammar_v_total=3,
+        grammar_vi_total=12,
         reading_i=1,
         grammar_i=2,
     )

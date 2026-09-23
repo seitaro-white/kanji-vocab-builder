@@ -153,6 +153,15 @@ def test_progress_dashboard_shows_jlpt_countdown_first(monkeypatch):
         ManualProgressCounts(
             vocab_baseline=4400,
             vocab_tracking_start=date(2026, 9, 3),
+            reading_i_total=41,
+            reading_ii_total=29,
+            reading_iii_total=11,
+            grammar_i_total=10,
+            grammar_ii_total=11,
+            grammar_iii_total=5,
+            grammar_iv_total=7,
+            grammar_v_total=3,
+            grammar_vi_total=12,
         )
     )
     countdown_text = "JLPT N2 exam countdown: 259 days (37 weeks)"
@@ -174,6 +183,15 @@ def test_progress_dashboard_renders_key_figures():
         ManualProgressCounts(
             vocab_baseline=4400,
             vocab_tracking_start=date(2026, 9, 3),
+            reading_i_total=41,
+            reading_ii_total=29,
+            reading_iii_total=11,
+            grammar_i_total=10,
+            grammar_ii_total=11,
+            grammar_iii_total=5,
+            grammar_iv_total=7,
+            grammar_v_total=3,
+            grammar_vi_total=12,
         )
     )
     with render.console.capture() as cap:
@@ -197,6 +215,15 @@ def test_progress_dashboard_renders_summary_before_detail_panels():
         ManualProgressCounts(
             vocab_baseline=4400,
             vocab_tracking_start=date(2026, 9, 3),
+            reading_i_total=41,
+            reading_ii_total=29,
+            reading_iii_total=11,
+            grammar_i_total=10,
+            grammar_ii_total=11,
+            grammar_iii_total=5,
+            grammar_iv_total=7,
+            grammar_v_total=3,
+            grammar_vi_total=12,
             reading_i=1,
             reading_ii=2,
             reading_iii=3,
@@ -217,14 +244,17 @@ def test_progress_dashboard_renders_summary_before_detail_panels():
     ]
     assert panel_order == sorted(panel_order)
 
-    for total in ["180/979", "6/81", "10/26", "4425/6000"]:
+    for total in ["180/979", "6/81", "10/48", "4425/6000"]:
         assert out.index(total) < panel_order[0]
         assert out.count(total) == 1
 
     assert out.index("1/41") > panel_order[1]
     assert "2/29" in out
     assert "3/11" in out
-    assert "10/26" in out
+    assert "10/48" in out
     assert "4/10" in out
     assert "5/11" in out
     assert "1/5" in out
+    assert "0/7" in out
+    assert "0/3" in out
+    assert "0/12" in out

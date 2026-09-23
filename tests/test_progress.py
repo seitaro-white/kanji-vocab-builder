@@ -66,29 +66,46 @@ def test_manual_coverage_aggregates_independent_section_counts():
     counts = ManualProgressCounts(
         vocab_baseline=4400,
         vocab_tracking_start=date(2026, 9, 3),
+        reading_i_total=42,
+        reading_ii_total=30,
+        reading_iii_total=12,
+        grammar_i_total=12,
+        grammar_ii_total=13,
+        grammar_iii_total=6,
+        grammar_iv_total=7,
+        grammar_v_total=3,
+        grammar_vi_total=12,
         reading_i=10,
         reading_ii=20,
         reading_iii=5,
         grammar_i=4,
         grammar_ii=6,
         grammar_iii=2,
+        grammar_iv=3,
+        grammar_v=1,
+        grammar_vi=5,
     )
 
     result = progress.manual_coverage(counts)
 
     assert [bar.label for bar in result.reading] == ["Total", "I", "II", "III"]
-    assert [bar.label for bar in result.grammar] == ["Total", "I", "II", "III"]
-    assert (result.reading[0].known, result.reading[0].total) == (35, 81)
-    assert [(bar.known, bar.total) for bar in result.reading[1:]] == [
-        (10, 41),
-        (20, 29),
-        (5, 11),
+    assert [bar.label for bar in result.grammar] == [
+        "Total", "I", "II", "III", "IV", "V", "VI"
     ]
-    assert (result.grammar[0].known, result.grammar[0].total) == (12, 26)
+    assert (result.reading[0].known, result.reading[0].total) == (35, 84)
+    assert [(bar.known, bar.total) for bar in result.reading[1:]] == [
+        (10, 42),
+        (20, 30),
+        (5, 12),
+    ]
+    assert (result.grammar[0].known, result.grammar[0].total) == (21, 53)
     assert [(bar.known, bar.total) for bar in result.grammar[1:]] == [
-        (4, 10),
-        (6, 11),
-        (2, 5),
+        (4, 12),
+        (6, 13),
+        (2, 6),
+        (3, 7),
+        (1, 3),
+        (5, 12),
     ]
 
 

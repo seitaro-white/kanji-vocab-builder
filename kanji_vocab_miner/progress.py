@@ -9,19 +9,6 @@ from kanji_vocab_miner.jouyou_data import JOUYOU
 # The current kanji study goal is JLPT N2 and everything below it, easiest first.
 KANJI_TARGET_LEVELS: list[int] = [5, 4, 3, 2]
 
-# Manually tracked textbook progress. Values are the section totals.
-READING_MAXIMA: dict[str, int] = {
-    "reading_i": 41,
-    "reading_ii": 29,
-    "reading_iii": 11,
-}
-GRAMMAR_MAXIMA: dict[str, int] = {
-    "grammar_i": 10,
-    "grammar_ii": 11,
-    "grammar_iii": 5,
-}
-READING_TOTAL = sum(READING_MAXIMA.values())
-GRAMMAR_TOTAL = sum(GRAMMAR_MAXIMA.values())
 VOCAB_TARGET = 6000
 
 
@@ -55,12 +42,24 @@ class ManualProgressCounts:
 
     vocab_baseline: int
     vocab_tracking_start: date
+    reading_i_total: int
+    reading_ii_total: int
+    reading_iii_total: int
+    grammar_i_total: int
+    grammar_ii_total: int
+    grammar_iii_total: int
+    grammar_iv_total: int
+    grammar_v_total: int
+    grammar_vi_total: int
     reading_i: int = 0
     reading_ii: int = 0
     reading_iii: int = 0
     grammar_i: int = 0
     grammar_ii: int = 0
     grammar_iii: int = 0
+    grammar_iv: int = 0
+    grammar_v: int = 0
+    grammar_vi: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,8 +75,8 @@ class ManualProgressBar:
 class ManualProgress:
     """Aggregated and per-part Reading and Grammar progress.
 
-    Each tuple contains the aggregate bar first, followed by I, II, and III
-    detail bars.  Keeping the display order in the calculation result makes
+    Each tuple contains the aggregate bar first, followed by section
+    detail bars. Keeping the display order in the calculation result makes
     the dashboard deterministic while leaving rendering concerns in render.py.
     """
 
@@ -88,30 +87,49 @@ class ManualProgress:
 def manual_coverage(counts: ManualProgressCounts) -> ManualProgress:
     """Calculate aggregate and detail bars for manual textbook progress.
 
-    The six section counts are independent: aggregate values are calculated
-    from the sections and are not treated as an additional input.
+    Section counts are independent: aggregate values are calculated from
+    the sections and are not treated as an additional input.
     """
     reading = (
         ManualProgressBar(
-            label="Total",
-            known=sum(getattr(counts, key) for key in READING_MAXIMA),
-            total=READING_TOTAL,
+            "Total",
+            counts.reading_i + counts.reading_ii + counts.reading_iii,
+            counts.reading_i_total + counts.reading_ii_total + counts.reading_iii_total,
         ),
-        ManualProgressBar("I", counts.reading_i, READING_MAXIMA["reading_i"]),
-        ManualProgressBar("II", counts.reading_ii, READING_MAXIMA["reading_ii"]),
-        ManualProgressBar("III", counts.reading_iii, READING_MAXIMA["reading_iii"]),
+        ManualProgressBar("I", counts.reading_i, counts.reading_i_total),
+        ManualProgressBar("II", counts.reading_ii, counts.reading_ii_total),
+        ManualProgressBar("III", counts.reading_iii, counts.reading_iii_total),
     )
     grammar = (
         ManualProgressBar(
-            label="Total",
-            known=sum(getattr(counts, key) for key in GRAMMAR_MAXIMA),
-            total=GRAMMAR_TOTAL,
+            "Total",
+            sum(
+                (
+                    counts.grammar_i,
+                    counts.grammar_ii,
+                    counts.grammar_iii,
+                    counts.grammar_iv,
+                    counts.grammar_v,
+                    counts.grammar_vi,
+                )
+            ),
+            sum(
+                (
+                    counts.grammar_i_total,
+                    counts.grammar_ii_total,
+                    counts.grammar_iii_total,
+                    counts.grammar_iv_total,
+                    counts.grammar_v_total,
+                    counts.grammar_vi_total,
+                )
+            ),
         ),
-        ManualProgressBar("I", counts.grammar_i, GRAMMAR_MAXIMA["grammar_i"]),
-        ManualProgressBar("II", counts.grammar_ii, GRAMMAR_MAXIMA["grammar_ii"]),
-        ManualProgressBar(
-            "III", counts.grammar_iii, GRAMMAR_MAXIMA["grammar_iii"]
-        ),
+        ManualProgressBar("I", counts.grammar_i, counts.grammar_i_total),
+        ManualProgressBar("II", counts.grammar_ii, counts.grammar_ii_total),
+        ManualProgressBar("III", counts.grammar_iii, counts.grammar_iii_total),
+        ManualProgressBar("IV", counts.grammar_iv, counts.grammar_iv_total),
+        ManualProgressBar("V", counts.grammar_v, counts.grammar_v_total),
+        ManualProgressBar("VI", counts.grammar_vi, counts.grammar_vi_total),
     )
     return ManualProgress(reading=reading, grammar=grammar)
 
