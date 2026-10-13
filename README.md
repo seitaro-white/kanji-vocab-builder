@@ -293,6 +293,11 @@ sections 11–21), III=5 (book sections 22–26), IV=7, V=3, VI=12.
 All nine `_total` keys are required.
 
 
+## AnkiConnect troubleshooting
+
+For the October 2026 API regressions, a manual new-card queue workaround, and a
+reversible rollback checklist, see [the AnkiConnect recovery note](docs/anki-connect-rollback.md).
+
 ## Credits
 
 - [Jisho.org](https://jisho.org/) for the excellent Japanese dictionary API
