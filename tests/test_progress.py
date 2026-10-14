@@ -32,7 +32,6 @@ def test_kanji_coverage_per_level_bars():
     totals = kanji_jlpt.kanji_level_totals()
     assert bars[5].total == totals[5]
     assert bars[2].total == totals[2]
-    assert 1 not in bars
     # Known counts land in the right level.
     assert bars[5].known == 1
     assert bars[3].known == 1

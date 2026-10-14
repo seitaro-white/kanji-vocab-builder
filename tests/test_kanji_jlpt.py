@@ -3,11 +3,19 @@
 from kanji_vocab_miner import kanji_jlpt
 
 
-def test_hardest_kanji_picks_lowest_n_number():
-    # 経 and 済 are both N3 in the vendored kanji index.
+def test_hardest_kanji_returns_an_n3_kanji_when_both_are_n3():
     kanji, level = kanji_jlpt.hardest_kanji("経済")
+
     assert kanji in ("経", "済")
     assert level == 3
+
+
+def test_hardest_kanji_prefers_n3_to_n5(monkeypatch):
+    monkeypatch.setattr(
+        kanji_jlpt, "get_kanji_level_index", lambda: {"学": 5, "問": 3}
+    )
+
+    assert kanji_jlpt.hardest_kanji("学問") == ("問", 3)
 
 
 def test_hardest_kanji_ignores_unranked_kanji_if_others_are_ranked():
@@ -28,7 +36,13 @@ def test_hardest_kanji_returns_first_kanji_when_all_unranked():
     assert level is None
 
 
-def test_kanji_level_totals_sum_matches_index_size():
-    totals = kanji_jlpt.kanji_level_totals()
-    index = kanji_jlpt.get_kanji_level_index()
-    assert sum(totals.values()) == len(index)
+def test_level_totals_count_each_level_including_empty_levels(monkeypatch):
+    monkeypatch.setattr(kanji_jlpt, "LEVELS", {"一": 5, "二": 5, "勝": 3})
+    kanji_jlpt.kanji_level_totals.cache_clear()
+    try:
+        totals = kanji_jlpt.kanji_level_totals()
+    finally:
+        # Keep the miniature dataset out of later dashboard tests.
+        kanji_jlpt.kanji_level_totals.cache_clear()
+
+    assert totals == {1: 0, 2: 0, 3: 1, 4: 0, 5: 2}

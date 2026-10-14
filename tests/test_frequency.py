@@ -1,51 +1,72 @@
-"""Tests for the JMdict frequency-band index (reads jamdict's bundled DB)."""
+"""Frequency labels, dictionary reduction, and band lookup specifications."""
+
+import sqlite3
+
+import pytest
 
 from kanji_vocab_miner import frequency
+from kanji_vocab_miner.frequency import BandWord
 
 
-def test_build_frequency_index_maps_surface_to_band():
+@pytest.fixture
+def dictionary_db(tmp_path, monkeypatch) -> None:
+    """Use a tiny dictionary containing duplicate priorities and alternate forms."""
+    path = tmp_path / "dictionary.db"
+    with sqlite3.connect(path) as connection:
+        connection.executescript("""
+            CREATE TABLE Kanji (ID INTEGER, idseq INTEGER, text TEXT);
+            CREATE TABLE KJP (kid INTEGER, text TEXT);
+            CREATE TABLE Kana (ID INTEGER, idseq INTEGER, text TEXT);
+            CREATE TABLE KNP (kid INTEGER, text TEXT);
+            CREATE TABLE Sense (ID INTEGER, idseq INTEGER);
+            CREATE TABLE SenseGloss (sid INTEGER, text TEXT, lang TEXT);
+
+            INSERT INTO Kanji VALUES (1, 1, '国'), (2, 2, '学校'), (3, 2, '學校');
+            INSERT INTO KJP VALUES
+                (1, 'nf20'), (1, 'nf03'), (1, 'nf10'), (3, 'nf01');
+            INSERT INTO Kana VALUES
+                (10, 1, 'くに'), (20, 2, 'がっこう'), (30, 3, 'すごい');
+            INSERT INTO KNP VALUES (30, 'nf01');
+            INSERT INTO Sense VALUES (100, 1), (200, 2), (300, 3);
+            INSERT INTO SenseGloss VALUES
+                (100, 'country', 'eng'), (200, 'school', 'eng'),
+                (300, 'amazing', 'eng');
+        """)
+    monkeypatch.setattr(frequency, "_db_path", lambda: str(path))
+
+
+def test_bundled_dictionary_contains_ranked_forms():
     index = frequency.build_frequency_index()
 
-    assert isinstance(index, dict)
-    assert len(index) > 10000  # tens of thousands of ranked forms
-
-    # 日本 carries nf25 in KanjiDic2/JMdict.
+    assert len(index) > 10000
     assert index["日本"] == 25
-
-    # All bands are integers in the valid nf range.
-    sample = list(index.values())[:1000]
-    assert all(isinstance(b, int) and 1 <= b <= 48 for b in sample)
+    assert all(isinstance(band, int) and 1 <= band <= 48 for band in index.values())
 
 
-def test_build_frequency_index_takes_min_band_per_surface():
-    # When a surface form appears with multiple nf bands, the smallest (most
-    # frequent) must win. 国 appears as 国/國; the common form is highly ranked.
+def test_repeated_surface_keeps_smallest_frequency_band(dictionary_db):
     index = frequency.build_frequency_index()
-    assert index["国"] <= 5
+
+    assert index["国"] == 3
 
 
-def test_band_label():
-    assert frequency.band_label(None) == ""  # no band -> blank
-    assert frequency.band_label(1) == "top 500"
-    assert frequency.band_label(2) == "top 1k"
-    assert frequency.band_label(5) == "top 2.5k"
-    assert frequency.band_label(48) == "top 24k"
+@pytest.mark.parametrize(
+    ("band", "label"),
+    [(None, ""), (1, "top 500"), (2, "top 1k"),
+     (5, "top 2.5k"), (48, "top 24k")],
+)
+def test_band_label_describes_rank_range(band, label):
+    assert frequency.band_label(band) == label
 
 
-def test_words_in_band_returns_expression_kana_definition():
-    words = frequency.words_in_band(1)  # nf01 == top 500
+def test_band_lookup_includes_alternate_forms_and_kana_only_entries(dictionary_db):
+    words = frequency.words_in_band(1)
 
-    assert len(words) > 100  # a band holds up to ~500 entries
-    # Every entry has the three display fields populated.
-    for w in words[:20]:
-        assert w.expression and w.kana and w.definition
-
-    # The band's surface forms all sit in band 1 of the frequency index.
-    index = frequency.build_frequency_index()
-    sample = words[0]
-    assert index.get(sample.expression) == 1 or index.get(sample.kana) == 1
+    assert sorted(words, key=lambda word: word.expression) == [
+        BandWord(expression="すごい", kana="すごい", definition="amazing"),
+        BandWord(expression="学校", kana="がっこう", definition="school"),
+    ]
 
 
-def test_words_in_band_empty_for_out_of_range():
-    assert frequency.words_in_band(0) == []
-    assert frequency.words_in_band(99) == []
+@pytest.mark.parametrize("band", [0, 99])
+def test_words_in_band_empty_for_out_of_range(band):
+    assert frequency.words_in_band(band) == []

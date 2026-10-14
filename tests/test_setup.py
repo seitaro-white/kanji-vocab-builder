@@ -1,6 +1,6 @@
 """Tests for isolated Anki vocabulary model setup."""
 
-from pathlib import Path
+import re
 from unittest.mock import patch
 
 import pytest
@@ -23,17 +23,21 @@ from kanji_vocab_miner.setup import (
 from scripts.install_vocab_v2 import install_vocab_v2
 
 
-@pytest.fixture(autouse=True)
-def provision_prompt():
-    """Prevent setup tests from writing to the real user configuration directory."""
-    with patch("kanji_vocab_miner.setup.provision_default_prompt") as provision:
-        yield provision
+@pytest.fixture
+def setup_config(tmp_path):
+    """Run real prompt provisioning inside the test's configuration directory."""
+    config = AppConfig(llm={"prompt_path": tmp_path / "prompt.md"})
+    with patch("kanji_vocab_miner.setup.load_config", return_value=config):
+        yield config
 
 
 def test_prerequisites_require_v3_but_not_older_models() -> None:
     """Production startup requires V3, independently of legacy and V2."""
     responses = [6, ["KanjiVocabMiner-Vocabulary", "All in One Kanji"], [VOCAB_NOTE_TYPE_V2]]
-    with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
+    with (
+        patch("kanji_vocab_miner.setup.load_config", return_value=AppConfig()),
+        patch("kanji_vocab_miner.setup.connect.send_request") as send_request,
+    ):
         send_request.side_effect = responses
         is_valid, errors = validate_prerequisites()
 
@@ -108,11 +112,14 @@ def test_v2_css_extends_furigana_styles_for_recall_content() -> None:
         create_note_type_v2()
 
     css = send_request.call_args.kwargs["css"]
-    assert "rt.known" in css
-    assert ".show-all-furigana rt.known" in css
-    assert ".japanese-cue" in css
-    assert ".sense" in css
-    assert ".definition-source" in css
+    assert _css_declarations(css, "rt.known")["display"] == "none"
+    assert (
+        _css_declarations(css, ".show-all-furigana rt.known")["display"]
+        == "ruby-text"
+    )
+    assert _css_declarations(css, ".japanese-cue")["font-size"] == "1.35em"
+    assert _css_declarations(css, ".sense + .sense")["margin-top"] == "0.75em"
+    assert _css_declarations(css, ".definition-source")["font-size"] == "0.65em"
 
 
 def test_update_note_type_v2_validates_fields_then_updates_only_v2() -> None:
@@ -140,24 +147,22 @@ def test_update_note_type_v2_rejects_incompatible_schema() -> None:
     )
 
 
-def test_run_setup_provisions_prompt_without_changing_anki_failure_semantics(
-    tmp_path, provision_prompt
-) -> None:
-    """Setup provisions the configured prompt and still returns false on Anki failure."""
-    config = AppConfig(llm={"prompt_path": tmp_path / "prompt.md"})
+def test_setup_installs_prompt_even_when_anki_is_unavailable(setup_config) -> None:
     with (
-        patch("kanji_vocab_miner.setup.load_config", return_value=config),
         patch("kanji_vocab_miner.setup.connect.send_request") as send_request,
         patch("kanji_vocab_miner.setup.console.print"),
     ):
         send_request.side_effect = RuntimeError("Anki is unavailable")
-        assert run_setup() is False
+        result = run_setup()
 
-    provision_prompt.assert_called_once_with(Path(tmp_path / "prompt.md"))
+    assert result is False
+    content = setup_config.llm.prompt_path.read_text(encoding="utf-8")
+    assert "register, connotation" in content
+    assert "Why these kanji" in content
     send_request.assert_called_once_with("version")
 
 
-def test_run_setup_creates_only_v3_model_on_a_fresh_install() -> None:
+def test_run_setup_creates_only_v3_model_on_a_fresh_install(setup_config) -> None:
     """Fresh setup creates V3 without mutating older models."""
     responses = [6, 123, [], 456, ["All in One Kanji"]]
     with (
@@ -178,22 +183,18 @@ def test_run_setup_creates_only_v3_model_on_a_fresh_install() -> None:
 
 def test_one_off_installer_adds_v2_model_to_existing_vocab_deck() -> None:
     """The migration helper installs V2 without touching notes or legacy models."""
-    with (
-        patch("scripts.install_vocab_v2.connect.send_request") as send_request,
-        patch("scripts.install_vocab_v2.create_note_type_v2") as create_v2,
-    ):
-        send_request.side_effect = [6, ["KanjiVocabMiner-Vocabulary"], []]
-        install_vocab_v2()
+    with patch("scripts.install_vocab_v2.connect.send_request") as send_request:
+        send_request.side_effect = [6, ["KanjiVocabMiner-Vocabulary"], [], 123]
+        result = install_vocab_v2()
 
-    create_v2.assert_called_once_with()
+    assert result == "Created note type 'MyJapaneseVocabularyV2'."
     assert [call.args[0] for call in send_request.call_args_list] == [
-        "version",
-        "deckNames",
-        "modelNames",
+        "version", "deckNames", "modelNames", "createModel",
     ]
+    assert send_request.call_args.kwargs["modelName"] == VOCAB_NOTE_TYPE_V2
 
 
-def test_run_setup_updates_existing_v3_model() -> None:
+def test_run_setup_updates_existing_v3_model(setup_config) -> None:
     """Setup validates and refreshes an installed V3 model only."""
     responses = [
         6,
@@ -224,7 +225,7 @@ def test_run_setup_updates_existing_v3_model() -> None:
     )
 
 
-def test_create_note_type_v3_uses_exact_fields_templates_and_css() -> None:
+def test_v3_recognition_enriches_answers_and_preserves_recall() -> None:
     with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
         create_note_type_v3()
 
@@ -239,12 +240,12 @@ def test_create_note_type_v3_uses_exact_fields_templates_and_css() -> None:
         assert "{{#" + field + "}}" in back
         assert "{{/" + field + "}}" in back
     assert recall == create_v2_templates()[1]
-    assert ".example-target" in kwargs["css"]
-    assert "color: red" in kwargs["css"]
-    assert "font-weight: bold" in kwargs["css"]
+    target_style = _css_declarations(kwargs["css"], ".example-target")
+    assert target_style["color"] == "red"
+    assert target_style["font-weight"] == "bold"
 
 
-def create_v2_templates():
+def create_v2_templates() -> list[dict]:
     with patch("kanji_vocab_miner.setup.connect.send_request") as send_request:
         create_note_type_v2()
     return send_request.call_args.kwargs["cardTemplates"]
@@ -265,3 +266,16 @@ def test_update_note_type_v3_rejects_incompatible_schema_before_mutation() -> No
         with pytest.raises(ValueError, match="incompatible fields"):
             update_note_type_v3()
     send_request.assert_called_once_with("modelFieldNames", modelName=VOCAB_NOTE_TYPE_V3)
+
+
+def _css_declarations(css: str, selector: str) -> dict[str, str]:
+    rule = re.search(r"(?m)^\s*" + re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert rule is not None, f"Missing CSS rule for {selector}"
+    return {
+        name.strip(): value.strip()
+        for name, value in (
+            declaration.split(":", 1)
+            for declaration in rule.group(1).split(";")
+            if declaration.strip()
+        )
+    }

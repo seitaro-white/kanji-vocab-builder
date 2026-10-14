@@ -41,7 +41,9 @@ def unordered_words():
     ]
 
 
-def test_sort_and_limit_words(unordered_words):
+def test_reviewed_companions_sort_before_unreviewed_then_by_jlpt(
+    unordered_words, monkeypatch
+):
     """
     Test that words are properly sorted based on reviewed Kanji and JLPT level.
 
@@ -51,7 +53,10 @@ def test_sort_and_limit_words(unordered_words):
 
     Within each priority group, words are further sorted by JLPT level (N5 > N4 > N3 > N2 > N1 > none).
     """
-    # Call the function
+    monkeypatch.setattr(
+        card_processor.connect, "get_reviewed_kanji", lambda: {"校"}
+    )
+
     result = card_processor.sort_and_limit_words(
         unordered_words, original_kanji="学", limit=10
     )

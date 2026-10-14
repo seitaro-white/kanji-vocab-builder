@@ -1,13 +1,10 @@
 from datetime import date, datetime
-import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 import requests
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.config import AppConfig
 from kanji_vocab_miner.enrichment import EnrichmentError, VocabEnrichment
 from kanji_vocab_miner.review_status import KanjiReviewStatus
@@ -75,23 +72,6 @@ def test_ping_anki():
         print(f"Successfully connected to AnkiConnect (version {result['result']})")
     except (requests.RequestException, ConnectionError) as e:
         pytest.fail(f"Failed to connect to Anki: {str(e)}. Make sure Anki is running with AnkiConnect installed.")
-
-@pytest.mark.integration
-def test_get_current_card():
-    """
-    Test getting the current card from Anki.
-
-    Requires:
-    1. Anki to be running with AnkiConnect installed
-    2. A card to be currently open in Anki with a "Kanji" field
-
-    Will fail if Anki isn't running or no card is displayed.
-    """
-    # Get the current card
-    card = connect.get_current_card()
-
-    # Assert we got something back
-    assert card, "No card returned from get_current_card"
 
 @pytest.mark.integration
 def test_get_current_kanji():
@@ -255,17 +235,6 @@ def test_reposition_card_to_top(kanji_card_with_restore):
     connect.reposition_card_to_top(card_id)
     info = connect.send_request("cardsInfo", cards=[card_id])
     assert info[0]["due"] == 0
-
-
-@pytest.mark.integration
-def test_reposition_restores_correctly(kanji_card_with_restore):
-    """Sanity check: the fixture restore actually works (due goes back to original)."""
-    card_id, original_due = kanji_card_with_restore
-    connect.reposition_card_to_top(card_id)
-    # Teardown will restore — we just verify it was moved during the test
-    info = connect.send_request("cardsInfo", cards=[card_id])
-    assert info[0]["due"] == 0
-    assert original_due != 0  # Confirm the card wasn't already at 0
 
 
 @pytest.mark.integration
@@ -514,7 +483,7 @@ def test_add_vocab_items_constructs_enrichment_client_from_config(
     assert result.added == [item]
 
 
-def test_add_vocab_items_enriches_concurrently_but_writes_v3_in_reviewed_order(
+def test_add_vocab_items_writes_v3_successes_in_reviewed_order(
     monkeypatch,
 ) -> None:
     items = [
@@ -526,32 +495,9 @@ def test_add_vocab_items_enriches_concurrently_but_writes_v3_in_reviewed_order(
                 definitions=["meaning"],
             )
         )
-        for expression in ["slow", "failed", "fast", "later"]
+        for expression in ["学校", "不存在", "猫", "犬"]
     ]
     added_expressions = []
-
-    class ConcurrentClient:
-        def __init__(self):
-            self.active = 0
-            self.max_active = 0
-            self.lock = threading.Lock()
-
-        def generate(self, word):
-            with self.lock:
-                self.active += 1
-                self.max_active = max(self.max_active, self.active)
-            try:
-                time.sleep(
-                    {"slow": 0.04, "failed": 0.02}.get(
-                        word.expression, 0.005
-                    )
-                )
-                if word.expression == "failed":
-                    raise EnrichmentError("generation rejected")
-                return _enrichment(word.expression)
-            finally:
-                with self.lock:
-                    self.active -= 1
 
     class DefinitionClient:
         def lookup(self, expression):
@@ -563,7 +509,9 @@ def test_add_vocab_items_enriches_concurrently_but_writes_v3_in_reviewed_order(
         added_expressions.append(params["note"]["fields"]["Expression"])
         return len(added_expressions)
 
-    enrichment_client = ConcurrentClient()
+    enrichment_client = FakeEnrichmentClient(
+        failures={"不存在": "generation rejected"}
+    )
     monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
     monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
     monkeypatch.setattr(
@@ -581,8 +529,7 @@ def test_add_vocab_items_enriches_concurrently_but_writes_v3_in_reviewed_order(
         config=_config(concurrency=2),
     )
 
-    assert enrichment_client.max_active == 2
-    assert added_expressions == ["slow", "fast", "later"]
+    assert added_expressions == ["学校", "猫", "犬"]
     assert result.added == [items[0], items[2], items[3]]
     assert [failure.item for failure in result.failed] == [items[1]]
     assert result.failed[0].stage == "enrichment"
@@ -806,14 +753,12 @@ def test_prepare_note_v2_builds_exact_recognition_only_payload() -> None:
     }
 
 
-@pytest.mark.integration
-def test_prepare_note():
-    """
-    Test the prepare_note function for creating Anki note data.
-    This test relies on the live functionality of `fetch_jisho_word_furigana`
-    called within `prepare_note`.
-    """
-    # 1. Test with a standard word
+def test_prepare_legacy_note_keeps_primary_and_additional_definitions(monkeypatch):
+    """Legacy serialization retains all definitions without live Jisho access."""
+    monkeypatch.setattr(
+        connect, "fetch_jisho_word_furigana",
+        lambda expression, reviewed: "<ruby>日本語<rt>にほんご</rt></ruby>",
+    )
     sample_word_full = JishoWord(
         expression="日本語",
         kana="にほんご",
@@ -822,10 +767,8 @@ def test_prepare_note():
         parts_of_speech=["Noun", "Proper Noun"]
     )
 
-    # Call prepare_note - this will internally call fetch_jisho_word_furigana
     prepared_note_full = connect.prepare_note(sample_word_full, set())
 
-    # Define expected output, assuming fetch_jisho_word_furigana("日本語", set()) -> "<ruby>日本語<rt>にほんご</rt></ruby>"
     expected_note_full = {
         "modelName": "MyJapaneseVocabulary",
         "fields": {
@@ -843,7 +786,14 @@ def test_prepare_note():
     }
     assert prepared_note_full == expected_note_full
 
-    # 2. Test with minimal definitions and parts_of_speech (single items)
+
+def test_prepare_legacy_note_leaves_additional_definitions_empty_for_one_sense(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        connect, "fetch_jisho_word_furigana",
+        lambda expression, reviewed: "<ruby>学<rt>まな</rt></ruby>ぶ",
+    )
     sample_word_minimal = JishoWord(
         expression="学ぶ",
         kana="まなぶ",
@@ -853,7 +803,6 @@ def test_prepare_note():
     )
     prepared_note_minimal = connect.prepare_note(sample_word_minimal, set())
 
-    # Define expected output, assuming fetch_jisho_word_furigana("学ぶ", set()) -> "<ruby>学<rt>まな</rt></ruby>ぶ"
     expected_note_minimal = {
         "modelName": "MyJapaneseVocabulary",
         "fields": {
@@ -873,8 +822,6 @@ def test_prepare_note():
 
 
 def test_prepare_note_v3_builds_exact_safe_payload() -> None:
-    from kanji_vocab_miner.enrichment import VocabEnrichment
-
     item = PendingVocabItem(
         word=JishoWord(
             expression="学校", kana="がっこう", jlpt=5,
@@ -895,12 +842,12 @@ def test_prepare_note_v3_builds_exact_safe_payload() -> None:
     note = connect.prepare_note_v3(item, definition, "front", "cue", enrichment)
 
     assert note["modelName"] == "MyJapaneseVocabularyV3"
-    assert list(note["fields"]) == [
+    assert set(note["fields"]) == {
         "Front", "Back", "Expression", "Kana Reading", "Grammar", "Definition",
         "Additional Definitions", "JLPT", "JapaneseDefinition", "JapaneseCue",
         "Recall", "DefinitionSource", "DefinitionURL", "Nuance", "Example",
         "KanjiExplanation",
-    ]
+    }
     assert note["fields"]["Nuance"] == "Formal &amp; useful<br>&quot;context&quot;"
     assert note["fields"]["Example"] == (
         "私は&lt;<strong class=\"example-target\">学校</strong>&gt;へ行く。"

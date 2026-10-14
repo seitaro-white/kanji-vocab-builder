@@ -6,7 +6,6 @@ import pytest
 from click.testing import CliRunner
 
 from kanji_vocab_miner import cli, setup
-from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.jisho import KanjiSummary
 from kanji_vocab_miner.jlpt import LevelWord
 from kanji_vocab_miner.jisho import JishoWord
@@ -24,7 +23,7 @@ def _word(expression: str, kana: str = "") -> JishoWord:
     return JishoWord(expression=expression, kana=kana, jlpt=5, definitions=["dummy"])
 
 
-def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
+def test_stats_shows_manual_section_counts_and_vocab_since_baseline(monkeypatch):
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: {"一"})
     monkeypatch.setattr(cli.ankiconnect, "get_all_kanji", lambda: {"一"})
     monkeypatch.setattr(
@@ -47,20 +46,12 @@ def test_stats_loads_manual_progress_and_passes_all_dashboard_data(monkeypatch):
     )
     monkeypatch.setattr(cli.manual_progress, "load_manual_progress", lambda: counts)
 
-    rendered = []
-    monkeypatch.setattr(
-        cli.render,
-        "progress_dashboard",
-        lambda kanji, manual, vocab: rendered.append((kanji, manual, vocab)),
-    )
-
     result = CliRunner().invoke(cli.jisho_anki, ["stats"])
 
     assert result.exit_code == 0, result.output
-    assert len(rendered) == 1
-    assert rendered[0][1].reading[1].known == 1
-    assert rendered[0][1].grammar[1].known == 2
-    assert rendered[0][2].known == 4425
+    assert "1/41" in result.output
+    assert "2/10" in result.output
+    assert "4425/6000" in result.output
 
 
 def test_web_command_binds_localhost_without_debug(monkeypatch):
@@ -86,44 +77,35 @@ def test_review_level_rejects_invalid_level():
     assert "N5, N4, N3, N2, N1" in result.output
 
 
-def test_review_level_marks_known_words(monkeypatch):
+def test_review_level_persists_checked_words(monkeypatch, tmp_path):
     words = [LevelWord(expression="猫", kana="ねこ", definition="cat"), LevelWord(expression="犬", kana="いぬ", definition="dog")]
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_vocab", lambda **k: [])
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
     monkeypatch.setattr(cli.jlpt, "words_in_level", lambda level: words)
-    monkeypatch.setattr(cli.known_words, "load_known_words", lambda *a, **k: set())
-
-    added: list[str] = []
-    monkeypatch.setattr(
-        cli.known_words,
-        "add_known_word",
-        lambda word, *a, **k: (added.append(word) or True),
-    )
+    path = tmp_path / "known.txt"
+    monkeypatch.setattr(cli.known_words, "known_words_path", lambda: path)
 
     # User checks 猫 (known), leaves 犬 unchecked.
     monkeypatch.setattr(cli.review, "review_level_words", lambda items: [words[0]])
 
     result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N5"])
     assert result.exit_code == 0, result.output
-    assert added == ["猫"]
+    assert cli.known_words.load_known_words(path) == {"猫"}
     assert "Marked 1 word" in result.output
 
 
-def test_review_level_aborts_without_marking(monkeypatch):
+def test_review_level_aborts_without_marking(monkeypatch, tmp_path):
     words = [LevelWord(expression="猫", kana="ねこ", definition="cat"), LevelWord(expression="犬", kana="いぬ", definition="dog")]
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_vocab", lambda **k: [])
     monkeypatch.setattr(cli.ankiconnect, "get_reviewed_kanji", lambda: set())
     monkeypatch.setattr(cli.jlpt, "words_in_level", lambda level: words)
-    monkeypatch.setattr(cli.known_words, "load_known_words", lambda *a, **k: set())
-    added: list[str] = []
-    monkeypatch.setattr(
-        cli.known_words, "add_known_word", lambda word, *a, **k: (added.append(word) or True)
-    )
+    path = tmp_path / "known.txt"
+    monkeypatch.setattr(cli.known_words, "known_words_path", lambda: path)
     monkeypatch.setattr(cli.review, "review_level_words", lambda items: None)
 
     result = CliRunner().invoke(cli.jisho_anki, ["review-level", "N5"])
     assert result.exit_code == 0, result.output
-    assert added == []  # aborted before marking anything
+    assert not path.exists()
 
 
 def test_process_word_selection_deduplicates_pending_expressions() -> None:
@@ -163,9 +145,9 @@ def test_handle_review_and_commit_partitions_outcomes(monkeypatch):
         lambda pending: ReviewResult(True, [discarded, added, failed]),
     )
     monkeypatch.setattr(
-        cli.ankiconnect,
-        "add_vocab_items",
-        lambda items, **kwargs: BatchAddResult(
+        cli,
+        "add_pending_words_to_anki",
+        lambda items: BatchAddResult(
             added=[added],
             failed=[AddFailure(failed, "definition", "definition missing")],
         ),
@@ -181,7 +163,9 @@ def test_handle_review_and_commit_partitions_outcomes(monkeypatch):
     assert continue_loop is True
 
 
-def test_fetch_words_from_kanji_renders_unknown_status_on_anki_error(monkeypatch):
+def test_fetch_words_from_kanji_shows_unknown_status_on_anki_error(
+    monkeypatch, capsys
+):
     summary = KanjiSummary(
         kanji="学",
         meanings=["study"],
@@ -189,7 +173,6 @@ def test_fetch_words_from_kanji_renders_unknown_status_on_anki_error(monkeypatch
         on_readings=["ガク"],
         jlpt=5,
     )
-    rendered_statuses = []
     monkeypatch.setattr(cli.jisho, "fetch_kanji_summary", lambda kanji: summary)
     monkeypatch.setattr(cli.jisho, "search_words_containing_kanji", lambda kanji: [])
     monkeypatch.setattr(
@@ -197,14 +180,12 @@ def test_fetch_words_from_kanji_renders_unknown_status_on_anki_error(monkeypatch
         "get_kanji_review_status",
         lambda kanji: (_ for _ in ()).throw(RuntimeError("Anki unavailable")),
     )
-    monkeypatch.setattr(
-        cli.render,
-        "kanji_summary",
-        lambda kanji_summary, status: rendered_statuses.append(status),
-    )
+    words = cli.fetch_words_from_kanji("学")
 
-    assert cli.fetch_words_from_kanji("学") == []
-    assert rendered_statuses == [KanjiReviewStatus.UNKNOWN]
+    assert words == []
+    output = capsys.readouterr().out
+    assert "Review status" in output
+    assert "Unknown" in output
 
 
 def test_reposition_kanji_moves_first_matching_card_without_prompt(monkeypatch):
@@ -274,9 +255,9 @@ def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, cap
         lambda pending: ReviewResult(True, [added, duplicate]),
     )
     monkeypatch.setattr(
-        cli.ankiconnect,
-        "add_vocab_items",
-        lambda items, **kwargs: BatchAddResult(
+        cli,
+        "add_pending_words_to_anki",
+        lambda items: BatchAddResult(
             added=[added], skipped_duplicates=[duplicate]
         ),
     )
@@ -293,33 +274,11 @@ def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, cap
     assert "failed 0" in output
 
 
-def test_add_pending_words_uses_one_progress_and_terminal_counts(monkeypatch):
+def test_add_pending_words_shows_completion_with_terminal_counts(monkeypatch):
     items = [
         PendingVocabItem(word=_word("学校", "がっこう")),
         PendingVocabItem(word=_word("大学", "だいがく")),
     ]
-    progress_instances = []
-
-    class FakeProgress:
-        def __init__(self, *columns, **kwargs):
-            self.columns = columns
-            self.updates = []
-            self.tasks = []
-            progress_instances.append(self)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def add_task(self, description, total):
-            self.tasks.append((description, total))
-            return 7
-
-        def update(self, task_id, **kwargs):
-            self.updates.append((task_id, kwargs))
-
     def fake_add(pending, on_progress):
         on_progress(
             CommitProgressEvent(
@@ -343,25 +302,16 @@ def test_add_pending_words_uses_one_progress_and_terminal_counts(monkeypatch):
             added=[pending[1]], skipped_duplicates=[pending[0]]
         )
 
-    monkeypatch.setattr(cli, "Progress", FakeProgress)
     monkeypatch.setattr(cli.ankiconnect, "add_vocab_items", fake_add)
 
-    result = cli.add_pending_words_to_anki(items)
+    with cli.console.capture() as capture:
+        result = cli.add_pending_words_to_anki(items)
 
-    assert len(progress_instances) == 1
     assert result.added == [items[1]]
-    assert progress_instances[0].tasks == [
-        ("Checking existing vocabulary…", 2)
-    ]
-    assert [update[1]["completed"] for update in progress_instances[0].updates] == [
-        1,
-        2,
-        2,
-    ]
-    assert (
-        progress_instances[0].updates[-1][1]["description"]
-        == "Vocabulary commit complete."
-    )
+    assert result.skipped_duplicates == [items[0]]
+    output = capture.get()
+    assert output.count("Vocabulary commit complete.") == 1
+    assert "2/2" in output
 
 
 def test_enrichment_failures_are_reported_and_retained_in_reviewed_order(

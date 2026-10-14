@@ -63,6 +63,6 @@ packages = ["kanji_vocab_miner"]
 
 [tool.pytest.ini_options]
 markers = [
-    "integration: requires Anki running with a card displayed in review mode",
+    "integration: requires live AnkiConnect and collection-specific prerequisites",
 ]
 addopts = "-m 'not integration'"

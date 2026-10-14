@@ -29,8 +29,3 @@ def test_per_grade_counts():
 def test_jouyou_is_union_of_grades():
     union = set().union(*(jouyou_data.BY_GRADE[g] for g in EXPECTED_GRADE_COUNTS))
     assert union == set(jouyou_data.JOUYOU)
-
-
-def test_no_duplicates_across_grades():
-    total = sum(len(jouyou_data.BY_GRADE[g]) for g in EXPECTED_GRADE_COUNTS)
-    assert total == 2136

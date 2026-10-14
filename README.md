@@ -298,6 +298,21 @@ All nine `_total` keys are required.
 For the October 2026 API regressions, a manual new-card queue workaround, and a
 reversible rollback checklist, see [the AnkiConnect recovery note](docs/anki-connect-rollback.md).
 
+## Tests
+
+```bash
+uv sync
+uv run pytest
+```
+
+The default suite uses mocked HTTP services and blocks accidental live Requests
+calls. It needs neither a running Anki instance nor Jisho/DeepSeek access.
+Dictionary tests use bundled local data or a miniature SQLite fixture.
+
+Live Anki checks are opt-in: `uv run pytest -m integration`. Run them only against
+a suitable test collection: some create/delete a test deck or temporarily change
+an existing card's due value. They are not part of the default suite.
+
 ## Credits
 
 - [Jisho.org](https://jisho.org/) for the excellent Japanese dictionary API

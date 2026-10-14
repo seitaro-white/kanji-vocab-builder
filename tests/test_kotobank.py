@@ -210,13 +210,7 @@ def test_malformed_supported_article_returns_parse_error(
 
 def test_timeout_is_retried_once_then_returns_definition() -> None:
     """Retry one timeout before returning a successful definition."""
-    response = MagicMock()
-    response.status_code = 200
-    response.text = """
-    <article class="dictype daijisen">
-      <section class="description">学校の意味。</section>
-    </article>
-    """
+    response = _definition_response("学校の意味。")
     session = MagicMock()
     session.get.side_effect = [requests.Timeout("slow"), response]
     client = KotobankClient(session=session)
@@ -262,13 +256,7 @@ def test_rate_limit_retries_once_after_bounded_retry_after() -> None:
     rate_limited = MagicMock()
     rate_limited.status_code = 429
     rate_limited.headers = {"Retry-After": "2"}
-    success = MagicMock()
-    success.status_code = 200
-    success.text = """
-    <article class="dictype daijisen">
-      <section class="description">意味。</section>
-    </article>
-    """
+    success = _definition_response("意味。")
     session = MagicMock()
     session.get.side_effect = [rate_limited, success]
     sleep = MagicMock()
@@ -285,13 +273,7 @@ def test_server_error_is_retried_once() -> None:
     server_error = MagicMock()
     server_error.status_code = 503
     server_error.headers = {}
-    success = MagicMock()
-    success.status_code = 200
-    success.text = """
-    <article class="dictype daijisen">
-      <section class="description">意味。</section>
-    </article>
-    """
+    success = _definition_response("意味。")
     session = MagicMock()
     session.get.side_effect = [server_error, success]
     client = KotobankClient(session=session)
@@ -314,13 +296,7 @@ def test_lookup_percent_encodes_kanji_and_kana(
     encoded_expression: str,
 ) -> None:
     """Percent-encode kanji and kana in direct word lookup URLs."""
-    response = MagicMock()
-    response.status_code = 200
-    response.text = """
-    <article class="dictype daijisen">
-      <section class="description">意味。</section>
-    </article>
-    """
+    response = _definition_response("意味。")
     session = MagicMock()
     session.get.return_value = response
     client = KotobankClient(session=session)
@@ -331,3 +307,13 @@ def test_lookup_percent_encodes_kanji_and_kana(
         f"https://kotobank.jp/word/{encoded_expression}",
         timeout=(3.05, 10.0),
     )
+
+
+def _definition_response(sense: str) -> MagicMock:
+    response = MagicMock()
+    response.status_code = 200
+    response.text = (
+        '<article class="dictype daijisen">'
+        f'<section class="description">{sense}</section></article>'
+    )
+    return response

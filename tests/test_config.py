@@ -114,11 +114,11 @@ def test_llm_api_key_environment_overrides_dotenv(tmp_path, monkeypatch) -> None
     assert get_llm_api_key() == "environment-secret"
 
 
-def test_invalid_llm_concurrency_is_rejected() -> None:
+@pytest.mark.parametrize("concurrency", [0, 11])
+def test_invalid_llm_concurrency_is_rejected(concurrency: int) -> None:
     """Generation concurrency stays within the supported worker range."""
-    for concurrency in (0, 11):
-        with pytest.raises(ValidationError):
-            AppConfig(llm={"concurrency": concurrency})
+    with pytest.raises(ValidationError):
+        AppConfig(llm={"concurrency": concurrency})
 
 
 def test_provision_default_prompt_creates_missing_parent_and_file(tmp_path) -> None:
@@ -128,7 +128,6 @@ def test_provision_default_prompt_creates_missing_parent_and_file(tmp_path) -> N
     result = provision_default_prompt(destination)
 
     assert result == destination
-    assert destination.is_file()
     content = destination.read_text(encoding="utf-8")
     assert "register, connotation" in content
     assert "Why these kanji" in content

@@ -1,6 +1,13 @@
 """Tests for the pending-word review screen."""
 
+from io import StringIO
 from unittest.mock import MagicMock
+
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.data_structures import Size
+from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.output import ColorDepth
+from prompt_toolkit.output.vt100 import Vt100_Output
 
 from kanji_vocab_miner import review
 from kanji_vocab_miner.jisho import JishoWord
@@ -79,7 +86,7 @@ def test_review_adapter_returns_abort_with_edited_items() -> None:
     )
 
     assert result.submitted is False
-    assert result.items is items
+    assert result.items == items
 
 
 def test_build_level_review_items_finds_hardest_kanji():
@@ -157,11 +164,19 @@ def test_review_level_words_returns_none_on_abort():
     assert result is None
 
 
-def test_format_level_choice_shows_hardest_kanji_and_known_status():
+def test_level_review_choice_shows_word_definition_and_reviewed_kanji():
     items = review.build_level_review_items(
         [LevelWord(expression="猫", kana="ねこ", definition="cat")], reviewed_kanji={"猫"}
     )
-    text = review._format_level_choice(items[0])
+    prompt = MagicMock()
+    choices = []
+
+    def capture_prompt(**kwargs):
+        choices.extend(kwargs["choices"])
+        return prompt
+
+    review.review_level_words(items, prompt_func=capture_prompt)
+    text = choices[0].name
 
     assert "猫" in text
     assert "(ねこ)" in text
@@ -170,45 +185,38 @@ def test_format_level_choice_shows_hardest_kanji_and_known_status():
     assert "reviewed" in text
 
 
-def test_review_level_words_colorizes_default_prompt(monkeypatch):
-    """When no prompt_func is injected, the live control's row rendering is
-    patched to emit coloured, per-column fragments instead of one flat name."""
-    items = review.build_level_review_items(
-        [LevelWord(expression="猫", kana="ねこ", definition="cat")], reviewed_kanji=set()
+def test_level_review_displays_coloured_kanji_and_returns_space_selected_word():
+    """Exercise the real prompt with in-memory terminal input and output."""
+    word = LevelWord(expression="猫", kana="ねこ", definition="cat")
+    items = review.build_level_review_items([word], reviewed_kanji=set())
+    terminal = StringIO()
+    output = Vt100_Output(
+        terminal,
+        lambda: Size(rows=24, columns=120),
+        default_color_depth=ColorDepth.TRUE_COLOR,
     )
 
-    class FakeControl:
-        _pointer = "❯"
-        _enabled_symbol = review.COMMIT_SYMBOL
-        _disabled_symbol = review.DISCARD_SYMBOL
+    with create_pipe_input() as pipe, create_app_session(input=pipe, output=output):
+        pipe.send_text(" \r")
+        result = review.review_level_words(items)
 
-    class FakePrompt:
-        def __init__(self):
-            self.content_control = FakeControl()
-
-        def execute(self):
-            return []
-
-    fake_prompt = FakePrompt()
-    monkeypatch.setattr(review, "inquirer", type("FakeInquirer", (), {"checkbox": staticmethod(lambda **k: fake_prompt)})())
-
-    result = review.review_level_words(items)
-    assert result == []
-
-    choice = {"enabled": True, "value": items[0].word}
-    fragments = fake_prompt.content_control._get_normal_text(choice)
-    styles_and_text = "".join(text for _, text in fragments)
-
-    assert "猫" in styles_and_text
-    assert "N3" in styles_and_text
-    # The hardest-kanji level segment carries its own colour class.
-    assert any(style == "class:n3" for style, _ in fragments)
+    assert result == [word]
+    # The N3 segment is yellow, independently of the rest of the row.
+    assert "\x1b[0;38;2;235;255;10;1m猫 (N3)" in terminal.getvalue()
+    assert "NOT reviewed" in terminal.getvalue()
 
 
-def test_format_level_choice_shows_no_kanji_for_kana_only_words():
+def test_level_review_choice_shows_no_kanji_for_kana_only_words():
     items = review.build_level_review_items(
         [LevelWord(expression="すごい", kana="すごい", definition="amazing")], reviewed_kanji=set()
     )
-    text = review._format_level_choice(items[0])
+    prompt = MagicMock()
+    choices = []
 
-    assert "no kanji" in text
+    def capture_prompt(**kwargs):
+        choices.extend(kwargs["choices"])
+        return prompt
+
+    review.review_level_words(items, prompt_func=capture_prompt)
+
+    assert "no kanji" in choices[0].name

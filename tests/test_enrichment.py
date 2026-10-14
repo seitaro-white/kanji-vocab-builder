@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 import threading
-import time
 
 import pytest
 import requests
@@ -200,18 +199,23 @@ def test_generate_enrichments_is_bounded_ordered_and_failure_isolated() -> None:
         for expression in ["slow", "fail", "fast", "later"]
     ]
 
+    failure_completed = threading.Event()
+
     class ControlledClient:
         def __init__(self):
             self.active = 0
             self.max_active = 0
             self.lock = threading.Lock()
+            self.overlap = threading.Barrier(2, timeout=5)
 
         def generate(self, input_word):
             with self.lock:
                 self.active += 1
                 self.max_active = max(self.max_active, self.active)
             try:
-                time.sleep({"slow": 0.04, "fail": 0.02}.get(input_word.expression, 0.005))
+                self.overlap.wait()
+                if input_word.expression == "slow":
+                    assert failure_completed.wait(5), "Failed outcome was not reported"
                 if input_word.expression == "fail":
                     raise EnrichmentError("expected failure")
                 return VocabEnrichment(**valid_data(nuance=input_word.expression))
@@ -222,8 +226,13 @@ def test_generate_enrichments_is_bounded_ordered_and_failure_isolated() -> None:
     client = ControlledClient()
     completed = []
 
+    def record_completion(item: PendingVocabItem) -> None:
+        completed.append(item)
+        if item.word.expression == "fail":
+            failure_completed.set()
+
     outcomes = generate_enrichments(
-        items, client, max_workers=2, on_complete=completed.append
+        items, client, max_workers=2, on_complete=record_completion
     )
 
     assert [outcome.item for outcome in outcomes] == items

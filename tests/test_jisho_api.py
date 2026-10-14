@@ -1,12 +1,8 @@
-import pytest
-import requests
-import json
-import jsonschema
-import os
-from unittest.mock import patch, MagicMock
-from kanji_vocab_miner import jisho
+from unittest.mock import MagicMock, patch
 
-from typing import List
+import pytest
+
+from kanji_vocab_miner import jisho
 
 
 def _make_furigana_response(characters: str, furigana: list[str]) -> MagicMock:
@@ -23,81 +19,63 @@ def _make_furigana_response(characters: str, furigana: list[str]) -> MagicMock:
     return mock_response
 
 
-def test_fetch_jisho_data():
-    """Test that fetch_jisho_data returns a valid response for a simple kanji query."""
-    # Test with the kanji for "mountain" (山)
-    kanji = "山"
+def test_word_search_encodes_query_and_returns_response_json() -> None:
+    payload = {"meta": {"status": 200}, "data": []}
+    response = MagicMock()
+    response.json.return_value = payload
 
-    # Call the function
-    try:
-        result = jisho.fetch_jisho_word_search(kanji)
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response) as get:
+        result = jisho.fetch_jisho_word_search("山")
 
-        # Check if the result is a dictionary (JSON)
-        assert isinstance(result, dict)
-
-        # Check if the expected keys are in the response
-        assert "meta" in result
-        assert "data" in result
-
-        # Verify status code is 200
-        assert result["meta"]["status"] == 200
-
-        # Check that data is a list
-        assert isinstance(result["data"], list)
-
-        # Validate against schema
-        schema_path = os.path.join(os.path.dirname(__file__), "jisho_words_schema.json")
-        with open(schema_path, "r") as schema_file:
-            schema = json.load(schema_file)
-            jsonschema.validate(instance=result, schema=schema)
-
-    except Exception as e:
-        pytest.fail(f"fetch_jisho_data raised an exception: {e}")
-
-
-def test_search_words():
-    """Test that search_words correctly processes the Jisho API response."""
-    kanji = "山"
-
-    # Call the function
-    words: List[jisho.JishoWord] = jisho.search_words_containing_kanji(kanji)
-
-    # Check we get results
-    assert len(words) > 0
-
-    # The target kanji should appear in the word
-    assert words[0] == jisho.JishoWord(
-        expression="山",
-        kana="やま",
-        jlpt=5,
-        definitions=["mountain; hill", "mine", "(mountain) forest"],
-        parts_of_speech=["Noun; Counter", "Noun; Counter", "Noun; Counter"],
+    assert result == payload
+    get.assert_called_once_with(
+        "https://jisho.org/api/v1/search/words?keyword=*%E5%B1%B1*"
     )
 
 
-@pytest.mark.parametrize(
-    "word, expected",
-    [
-        ("学校", "<ruby>学<rt>がっ</rt></ruby><ruby>校<rt>こう</rt></ruby>"),
-        ("お風呂", "お<ruby>風<rt>ふ</rt></ruby><ruby>呂<rt>ろ</rt></ruby>"),
-        ("走る", "<ruby>走<rt>はし</rt></ruby>る"),
-        ("借金", "<ruby>借金<rt>しゃっきん</rt></ruby>"),
-    ],
-)
-def test_fetch_jisho_word_furigana(word, expected):
-    """Test that fetch_jisho_word_furigana returns a valid furigana string."""
-    furigana_html = jisho.fetch_jisho_word_furigana(word, set())
+def test_search_returns_matching_words_with_at_most_three_senses() -> None:
+    payload = {
+        "data": [
+            {"japanese": [{"word": "猫", "reading": "ねこ"}]},
+            {
+                "japanese": [{"word": "山", "reading": "やま"}],
+                "jlpt": ["jlpt-n5"],
+                "senses": [
+                    {"english_definitions": ["mountain", "hill"],
+                     "parts_of_speech": ["Noun", "Counter"]},
+                    {"english_definitions": ["mine"], "parts_of_speech": ["Noun"]},
+                    {"english_definitions": ["forest"], "parts_of_speech": ["Noun"]},
+                    {"english_definitions": ["extra sense"]},
+                ],
+            },
+        ]
+    }
+    response = MagicMock()
+    response.json.return_value = payload
 
-    # Check that the result is a string
-    assert isinstance(furigana_html, str)
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        words = jisho.search_words_containing_kanji("山")
 
-    # Check for basic ruby HTML structure
-    assert furigana_html == expected
+    assert words == [
+        jisho.JishoWord(
+            expression="山",
+            kana="やま",
+            jlpt=5,
+            definitions=["mountain; hill", "mine", "forest"],
+            parts_of_speech=["Noun; Counter", "Noun", "Noun"],
+        )
+    ]
 
 
 @pytest.mark.parametrize(
     "characters, furigana, reviewed_kanji, expected",
     [
+        (
+            "お風呂",
+            ["ふ", "ろ"],
+            set(),
+            "お<ruby>風<rt>ふ</rt></ruby><ruby>呂<rt>ろ</rt></ruby>",
+        ),
         # Per-kanji path — no kanji reviewed
         (
             "学校",
@@ -180,7 +158,7 @@ def test_is_kanji(character, expected):
     assert jisho.is_kanji(character) == expected
 
 
-def test_parse_kanji_summary_from_html():
+def test_fetch_kanji_summary_returns_meanings_readings_and_jlpt() -> None:
     html = """
     <div class="kanji details">
         <div class="kanji-details__main-meanings">mountain, hill</div>
@@ -208,10 +186,16 @@ def test_parse_kanji_summary_from_html():
     </div>
     """
 
-    summary = jisho._parse_kanji_summary_from_html("山", html)
-    assert summary is not None
-    assert summary.kanji == "山"
-    assert summary.meanings == ["mountain", "hill"]
-    assert summary.kun_readings == ["やま"]
-    assert summary.on_readings == ["サン", "セン"]
-    assert summary.jlpt == 5
+    response = MagicMock()
+    response.text = html
+
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        summary = jisho.fetch_kanji_summary("山")
+
+    assert summary == jisho.KanjiSummary(
+        kanji="山",
+        meanings=["mountain", "hill"],
+        kun_readings=["やま"],
+        on_readings=["サン", "セン"],
+        jlpt=5,
+    )

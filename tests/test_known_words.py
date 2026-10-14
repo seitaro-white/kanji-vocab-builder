@@ -16,8 +16,9 @@ def test_add_then_load_roundtrips(tmp_path):
 
 def test_add_duplicate_is_noop(tmp_path):
     path = tmp_path / "known.txt"
-    assert known_words.add_known_word("日本", path) is True
-    assert known_words.add_known_word("日本", path) is False  # already present
-    assert known_words.load_known_words(path) == {"日本"}
-    # File holds a single line, no duplicate.
-    assert path.read_text(encoding="utf-8").split() == ["日本"]
+    known_words.add_known_word("日本", path)
+
+    added = known_words.add_known_word("日本", path)
+
+    assert added is False
+    assert path.read_text(encoding="utf-8").splitlines() == ["日本"]

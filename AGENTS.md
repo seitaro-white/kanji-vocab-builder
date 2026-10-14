@@ -41,18 +41,20 @@ These are the canonical commands. Prefer the most specific scope possible (file 
 
 | Task | Command | Notes |
 | --- | --- | --- |
-| Full test suite | `uv run pytest` | Network-heavy tests require Anki running and internet access.
+| Default test suite | `uv run pytest` | Integration tests are excluded; live HTTP is blocked by `tests/conftest.py`.
+| Live integration suite | `uv run pytest -m integration` | Opt-in Anki tests; some create/delete test decks or change card due values.
 | Single test file | `uv run pytest tests/test_card_processor.py` | Replace path with the target module.
-| Single test function | `uv run pytest tests/test_card_processor.py -k test_sort_and_limit_words` | Use `-k` for function substring match.
-| Fast unit subset | `uv run pytest tests/test_card_processor.py tests/test_jisho_api.py -m "not integration"` | The suite has no pytest markers yet; feel free to introduce `@pytest.mark.integration` for Anki/Jisho-dependent tests.
-| Syntax / lint sanity | `uv run python -m compileall jisho_anki_tool` | Acts as a quick syntax check in absence of a dedicated linter.
+| Single test function | `uv run pytest tests/test_card_processor.py -k reviewed_companions` | Use `-k` for function substring match.
+| Fast unit subset | `uv run pytest tests/test_card_processor.py tests/test_jisho_api.py` | Both files use explicit, mocked service inputs.
+| Syntax / lint sanity | `uv run python -m compileall kanji_vocab_miner` | Acts as a quick syntax check in absence of a dedicated linter.
 | (Optional) Static format check | `uv run python -m ruff check jisho_anki_tool` | Ruff is not bundled; install via `uv tool install ruff` if the user requests linting.
 | Build distributables | `uv build` | Produces wheel + sdist under `dist/`.
 
 **Testing etiquette**
 - When editing logic that touches Anki/Jisho, prefer writing/expanding unit tests that mock network calls. Only run the full integration suite if the environment allows the required services.
-- Tests living under `tests/test_anki_connect.py` make real HTTP requests to AnkiConnect. Announce to the user before running them; failures are common when Anki isn&#39;t open.
-- Keep new tests deterministic and mark integration ones with `@pytest.mark.integration` once introduced, so they can be skipped via `-m "not integration"`.
+- Only tests marked `integration` may use live HTTP. Stub service boundaries in unit tests; the autouse guard fails accidental Requests calls before they reach Anki or the internet.
+- Announce live Anki tests before running them and obtain authorization for tests that mutate the collection. The integration suite needs a suitable collection and may fail when Anki is closed.
+- Mark new live-service tests with `@pytest.mark.integration`; `pyproject.toml` excludes them by default.
 
 ---
 
