@@ -53,6 +53,8 @@ def test_native_preview_is_standalone_and_offline(
     assert parsed.article.select(".name-place") != []
     assert parsed.article.find("b") is None
     assert "mock" in parsed.get_text()
+    assert '<ruby>乗<rt>の</rt></ruby>った</span>' in html
+    assert '乗っ / た' in parsed.select_one("#native-boundaries").get_text()
 
 
 @pytest.mark.parametrize(

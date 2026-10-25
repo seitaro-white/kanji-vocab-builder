@@ -87,8 +87,10 @@ def render_native_preview(corpus: dict) -> str:
         f'SudachiDict-core {escape(version("sudachidict-core"))}; C mode.</p>'
         '<p>Readings and boundaries below are native parser output, not guarantees of '
         'the intended interpretation. In particular, 市場 is read しじょう here, '
-        'where the human example intended いちば. Inflections can remain split. '
-        'No custom grouping or name dictionary was added.</p>'
+        'where the human example intended いちば. Native inflections remain split '
+        'in the analysis tables; the article above shares highlights across common '
+        'verb/adjective endings. Display grouping does not merge parser tokens or '
+        'add vocabulary entries; no name dictionary was added.</p>'
         + "".join(sections)
         + '</section>'
     )
