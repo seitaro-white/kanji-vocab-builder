@@ -110,9 +110,24 @@ textarea:focus-visible {
   background: transparent;
 }
 
-.furigana-mode-unknown .known rt,
+.furigana-mode-unknown rt.known-kanji,
 .furigana-mode-none rt {
   display: none;
+}
+
+.name {
+  /* A base-text border does not propagate an underline into ruby annotations. */
+  border-bottom: 2px dotted #52606d;
+}
+
+.name-legend {
+  background: transparent;
+}
+
+.demo-notice {
+  padding: 0.5rem 0.8rem;
+  border-left: 0.3rem solid #2680c2;
+  background: #e7f3ff;
 }
 
 .unknown-dictionary {

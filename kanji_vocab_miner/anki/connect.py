@@ -594,9 +594,13 @@ def add_vocab_note_to_deck(
         print("No notes were added.")
 
 
-def get_reviewed_kanji() -> Set[str]:
+def get_reviewed_kanji(*, should_raise: bool = False) -> Set[str]:
     """
     Get the set of Kanji that have been reviewed in the configured kanji deck.
+
+    Args:
+        should_raise: Propagate loading errors instead of returning an empty set.
+            Reader callers use this to distinguish unavailable data from no known kanji.
 
     Returns:
         A set of reviewed Kanji characters
@@ -628,7 +632,9 @@ def get_reviewed_kanji() -> Set[str]:
 
         return reviewed_kanji
     except Exception as e:
-        # If there's any error, just return an empty set rather than breaking the app flow
+        if should_raise:
+            raise
+        # Preserve best-effort behavior for existing CLI/card-rendering callers.
         print(f"Warning: Failed to get reviewed Kanji: {str(e)}")
         return set()
 

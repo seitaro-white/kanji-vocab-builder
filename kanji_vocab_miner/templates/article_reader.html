@@ -10,10 +10,13 @@
 <body>
   <main>
     <h1>Furigana Article Reader</h1>
+    {% if config.READER_DEMO %}
+      <p class="demo-notice">Demo — offline mock vocabulary and known kanji. No Anki connection.</p>
+    {% endif %}
     {% if article_html %}
       <div class="reader-controls" aria-label="Reader display options">
         <div role="group" aria-label="Furigana display mode">
-          <button type="button" data-furigana-mode="unknown" aria-pressed="true">Unknown only</button>
+          <button type="button" data-furigana-mode="unknown" aria-pressed="true">Unknown kanji only</button>
           <button type="button" data-furigana-mode="all" aria-pressed="false">All furigana</button>
           <button type="button" data-furigana-mode="none" aria-pressed="false">No furigana</button>
         </div>
@@ -25,18 +28,19 @@
         <span class="jlpt-n3">N3</span>
         <span class="jlpt-n2">N2</span>
         <span class="jlpt-n1">N1</span>
+        <span class="name name-legend" title="Parser-recognized person or place">Person / place name</span>
       </aside>
       <article class="article furigana-mode-unknown jlpt-highlight-unknown">{{ article_html }}</article>
       <a href="/" class="start-over">Start Over</a>
-      {% if dictionary_groups %}
+      {% if unknown_vocabulary_groups %}
         <section id="unknown-dictionary" class="unknown-dictionary" aria-labelledby="unknown-dictionary-heading">
           <h2 id="unknown-dictionary-heading">Unknown vocabulary</h2>
-          {% for group in dictionary_groups %}
+          {% for group in unknown_vocabulary_groups %}
             <section>
               <h3>{% if group.jlpt_level %}N{{ group.jlpt_level }}{% else %}Unlisted{% endif %}</h3>
               <ul>
-                {% for entry in group.entries %}
-                  <li>{{ entry.expression }} × {{ entry.count }}</li>
+                {% for word in group.word_counts %}
+                  <li>{{ word.dictionary_form }} × {{ word.occurrence_count }}</li>
                 {% endfor %}
               </ul>
             </section>
@@ -47,7 +51,7 @@
       {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
       <form method="post">
         <label for="article-text">Japanese text</label>
-        <textarea name="text" id="article-text" maxlength="50000">{{ source_text }}</textarea>
+        <textarea name="text" id="article-text">{{ source_text }}</textarea>
         <button type="submit">Read Article</button>
       </form>
     {% endif %}

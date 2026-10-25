@@ -1,8 +1,41 @@
 """Tests for the localhost article reader web boundary."""
 
+from functools import partial
+
+import pytest
+import requests
 from bs4 import BeautifulSoup
 
-from kanji_vocab_miner.web import create_app
+from kanji_vocab_miner import known_words, web
+from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.web import create_app as create_reader_app
+
+# Every web test explicitly avoids real Anki kanji loading as well as vocabulary IO.
+create_app = partial(create_reader_app, kanji_loader=set)
+
+
+def test_demo_is_explicit_and_never_loads_live_knowledge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: object, **kwargs: object) -> set[str]:
+        raise AssertionError("Offline demo must not contact Anki or read user inventory")
+
+    # Guard actual IO boundaries: patching web loader names alone would miss
+    # functions already bound as create_app's default arguments.
+    monkeypatch.setattr(requests, "post", forbidden)
+    monkeypatch.setattr(connect, "get_config", forbidden)
+    monkeypatch.setattr(known_words, "known_words_path", forbidden)
+    app = web.create_demo_app()
+    client = app.test_client()
+    editor = client.get("/")
+    assert b"Demo" in editor.data
+    assert "図書館".encode() in editor.data
+    response = client.post("/", data={"text": "図書館 学生 山田 東京都"})
+    assert response.status_code == 200
+    assert b"mock" in response.data
+    assert b"name-person" in response.data
+    assert b"name-place" in response.data
+    assert b"known-kanji" in response.data
 
 
 def test_get_root_shows_editor_and_submit_control() -> None:
@@ -13,6 +46,10 @@ def test_get_root_shows_editor_and_submit_control() -> None:
     assert response.status_code == 200
     assert b'<textarea name="text"' in response.data
     assert b'type="submit"' in response.data
+    # Native maxlength counts UTF-16 units and can truncate valid supplementary
+    # text at half the server's code-point limit. Let submission validation decide.
+    editor = BeautifulSoup(response.data, "html.parser").find("textarea")
+    assert editor.get("maxlength") is None
 
 
 def test_empty_text_returns_inline_validation_error() -> None:
@@ -32,6 +69,19 @@ def test_fifty_thousand_characters_are_accepted() -> None:
 
     assert response.status_code == 200
     assert b"50,000-character limit" not in response.data
+
+
+@pytest.mark.parametrize("character", ["𠮷", "😀"])
+@pytest.mark.parametrize("length, expected_status", [(50_000, 200), (50_001, 400)])
+def test_character_limit_accepts_urlencoded_supplementary_text(
+    character: str, length: int, expected_status: int
+) -> None:
+    app = create_app(expression_loader=set, known_loader=set)
+    response = app.test_client().post("/", data={"text": character * length})
+
+    assert response.status_code == expected_status
+    if expected_status == 400:
+        assert b"50,000-character limit" in response.data
 
 
 def test_over_limit_is_rejected_before_loading_anki() -> None:
@@ -99,7 +149,7 @@ def test_success_replaces_editor_with_controls_and_start_over() -> None:
 
     assert response.status_code == 200
     assert b'<textarea name="text"' not in response.data
-    assert b"Unknown only" in response.data
+    assert b"Unknown kanji only" in response.data
     assert b"All furigana" in response.data
     assert b"No furigana" in response.data
     assert b"Start Over" in response.data
@@ -115,6 +165,39 @@ def test_pasted_markup_is_displayed_as_text() -> None:
     parsed = BeautifulSoup(response.data, "html.parser")
     assert parsed.find("article").find("script") is None
     assert '<script>alert("x")</script>' in parsed.get_text()
+
+
+def test_known_kanji_and_vocabulary_are_injected_independently() -> None:
+    app = create_app(
+        expression_loader=lambda: {"図書館"},
+        known_loader=set,
+        kanji_loader=lambda: set("学生"),
+    )
+    response = app.test_client().post("/", data={"text": "図書館 学生"})
+    parsed = BeautifulSoup(response.data, "html.parser")
+    words = parsed.article.select(".token")
+
+    assert response.status_code == 200
+    assert "known" in words[0]["class"]
+    assert words[0].rt.get("class", []) == []
+    assert "unknown" in words[1]["class"]
+    assert words[1].rt["class"] == ["known-kanji"]
+    css = app.test_client().get("/static/article_reader.css").data
+    assert b".furigana-mode-unknown rt.known-kanji" in css
+    assert b".furigana-mode-unknown .known rt" not in css
+
+
+def test_kanji_loader_failure_is_not_silently_treated_as_empty() -> None:
+    def unavailable() -> set[str]:
+        raise RuntimeError("private kanji details")
+
+    app = create_app(expression_loader=set, known_loader=set, kanji_loader=unavailable)
+    response = app.test_client().post("/", data={"text": "学生"})
+
+    assert response.status_code == 503
+    assert b"private kanji details" not in response.data
+    assert "学生".encode() in response.data
+    assert b"<article" not in response.data
 
 
 def test_default_result_mode_is_unknown_only() -> None:
@@ -136,6 +219,8 @@ def test_unexpected_processing_failure_returns_safe_message() -> None:
     assert response.status_code == 500
     assert b"Could not process this article" in response.data
     assert b"sensitive processing details" not in response.data
+    assert b"Check local reader configuration" in response.data
+    assert b"Sudachi dictionary installation" not in response.data
     assert "猫".encode() in response.data
 
 

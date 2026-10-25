@@ -40,6 +40,8 @@ dependencies = [
     "requests==2.31.0",
     "rich>=14.0.0",
     "scipy>=1.18.1",
+    "sudachidict-core==20260428",
+    "sudachipy==0.6.11",
     "tqdm>=4.67.1",
     "unidic-lite>=1.0.8",
 ]

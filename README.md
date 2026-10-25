@@ -85,10 +85,13 @@ kanji-vocab-miner web
 # Open http://127.0.0.1:8766
 ```
 
-Paste up to 50,000 characters of plain Japanese text. The result colours
+Paste up to 50,000 characters of plain Japanese text. The limit is checked on
+submission rather than silently truncating pasted text. The result colours
 unknown words using the bundled, unofficial JLPT N5–N1 vocabulary data; a
 **Highlight known words** toggle can extend those colours to known vocabulary.
-You can show furigana for unknown words only, for every word, or for no words.
+You can show furigana for **unknown kanji only**, for every word, or for no words.
+Furigana uses a separate known-kanji inventory, not vocabulary membership. A grouped
+reading stays visible until all kanji represented by that group are known.
 Runs of blank lines are reduced to one blank line between paragraphs. Below
 the article, an unknown-vocabulary list groups dictionary forms from N5 through
 N1, followed by unlisted words. Entries show their article frequency and are
@@ -98,14 +101,58 @@ order. **Start Over** returns to an empty editor.
 A token is treated as known when its normalized dictionary identity matches an
 `Expression` in the configured Anki vocabulary deck or an entry in
 `~/.config/kanji-vocab-miner/known_vocab.txt`. The reader reloads both sources
-on every submission, so Anki must remain available. If AnkiConnect cannot be
-reached, the reader blocks the result rather than presenting incomplete known
-status.
+on every submission, along with kanji from the configured kanji deck. The kanji
+inventory uses the existing reviewed-card criterion (`-is:new OR flag:1`), not kanji
+that merely occur in vocabulary cards. If either Anki inventory cannot be loaded,
+the reader blocks the result rather than silently treating it as empty. Real Anki
+verification of this new reader path remains pending; offline tests mock all IO.
 
-Matching is morphological-token based. Inflected single-token words can match
-their dictionary form, but multi-token expressions are not merged (for example,
-`勉強する` may be analyzed as `勉強` and `する`). JLPT vocabulary data is
-unofficial and incomplete; unlisted words remain uncoloured.
+The reader uses **Sudachi C-mode segmentation** with its core dictionary. Only
+kanji-containing vocabulary receives JLPT backgrounds. Kana-only words, particles,
+auxiliaries and standalone affixes remain neutral. Native boundaries are accepted:
+`食べました` can remain `食べ / まし / た`, and `子供っぽい` can remain
+`子供 / っぽい`; no custom inflection/compound merging is applied. Dictionary-form
+matching handles inflections without marking unrelated kanji homophones as known.
+JLPT vocabulary data is unofficial and incomplete; unlisted words remain uncoloured.
+
+Parser-tagged person and place names have **dotted underlines** rather than JLPT
+backgrounds and are omitted from the unknown-vocabulary list. This is a small use of
+Sudachi's existing tags, not comprehensive name recognition. Names and ambiguous
+words can have incorrect or missing readings. The reader keeps original text and uses
+grouped ruby when reliable kana alignment is unavailable.
+
+#### Offline demo (no Anki needed)
+
+```bash
+uv sync
+uv run python -m kanji_vocab_miner.web --demo
+# Open http://127.0.0.1:8766 (use --port 8767 if needed)
+```
+
+The demo is clearly labelled and uses explicit mock inventories: known vocabulary
+`学校`, `図書館`, `食べる`, `経済的`; known kanji `学校食見日人本大生`.
+It does not read your known-vocabulary file or call Anki. This is never an automatic
+fallback for a failed live connection.
+
+Open [the standalone native preview](docs/reader-sudachi-preview.html) for all eight
+reviewed passages, native boundaries/readings and comparisons with the original human
+annotations. Regenerate it offline with:
+
+```bash
+uv run python scripts/preview_sudachi_reader.py
+```
+
+SudachiPy **0.6.11** and SudachiDict-core **20260428** are pinned together for binary
+compatibility, avoiding the currently unstable 0.7 transition. The core dictionary
+adds roughly 70 MB compressed to installation. Sudachi code/dictionary package licensing
+is Apache-2.0 with additional incorporated-resource notices; retain those notices when
+redistributing. See [SudachiDict LEGAL](https://github.com/WorksApplications/SudachiDict/blob/develop/LEGAL).
+Fugashi remains installed for Anki cue rendering outside this reader.
+
+To retain the 50,000-character input limit within Sudachi's byte limits, long articles
+are chunked near sentence/newline boundaries. Extremely long unbroken text may be split
+inside a word; normalization-expanded input is reduced into smaller chunks if needed.
+No source characters are dropped.
 
 ### Vocabulary cards and commit review
 

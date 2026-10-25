@@ -2,6 +2,7 @@
 
 from kanji_vocab_miner.furigana import (
     render_japanese_cue,
+    render_token_furigana,
     update_furigana_visibility,
 )
 
@@ -39,6 +40,28 @@ def test_render_japanese_cue_aligns_kana_anchored_kanji_chunks() -> None:
     assert render_japanese_cue(["取り扱う"], set()) == (
         '<div class="sense"><ruby>取<rt>と</rt></ruby>り'
         '<ruby>扱<rt>あつか</rt></ruby>う</div>'
+    )
+
+
+def test_multi_kanji_chunk_leaves_kana_outside_ruby() -> None:
+    assert render_token_furigana("勉強する", "べんきょうする", {"勉", "強"}) == (
+        '<ruby>勉強<rt class="known">べんきょう</rt></ruby>する'
+    )
+
+
+def test_grouped_ruby_does_not_ignore_supplementary_kanji() -> None:
+    assert render_token_furigana("𠮷田", "よしだ", {"田"}) == (
+        "<ruby>𠮷田<rt>よしだ</rt></ruby>"
+    )
+    assert render_token_furigana("𠮷田", "よしだ", {"𠮷", "田"}) == (
+        '<ruby>𠮷田<rt class="known">よしだ</rt></ruby>'
+    )
+
+
+def test_repeated_kana_anchor_falls_back_to_grouped_ruby() -> None:
+    """The first の in もののけ belongs to 物, not to the literal anchor."""
+    assert render_token_furigana("物の怪", "もののけ") == (
+        "<ruby>物の怪<rt>もののけ</rt></ruby>"
     )
 
 
