@@ -106,5 +106,14 @@ passing regressions and recorded visual-review results or explicit limitations.
   remains unverified and is separate from the sidecar review.
 - After the grid correction, `uv run pytest tests/test_web.py tests/test_reader_preview.py`:
   **42 passed**. Preview regenerated and `git diff --check` passed.
+- Rebased onto `origin/main` at `0048725`, incorporating Sudachi consolidation
+  (#20) and reader inflection highlighting (#21). The generated preview conflict
+  was resolved by regeneration, preserving the merged parser/inflection behavior.
+  References above to unchanged parser output describe this PR's visual scope,
+  not a requirement to restore pre-consolidation code.
+- Post-rebase `uv run pytest`: **340 passed, 11 deselected** (live integration tests
+  excluded by default). Syntax compilation and whitespace checks passed. Sidecar
+  Chromium checks passed again for all desktop/mobile modes with merged inflection
+  highlighting. No dependency changes were introduced by this frontend PR.
 - Live Anki remains separately pending; no live calls or inventory/card/deck changes
   were made during the redesign.
