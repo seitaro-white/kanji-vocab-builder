@@ -24,6 +24,27 @@ References:
 - [Initial research](reader-parsing-research.md)
 - [Sudachi Python documentation](https://github.com/WorksApplications/sudachi.rs/tree/develop/python)
 
+## Follow-up: continuous inflection highlights
+
+After reviewing `乗っ / た` in the native preview, the user requested full-inflection
+backgrounds for readability. This supersedes the original display-only decision to
+leave all auxiliary endings neutral; native parsing itself remains unchanged.
+
+`article_render.py` now groups a kanji verb/adjective with a bounded set of adjacent
+inflection endings for one outer highlight, using the lexical head's vocabulary
+status and JLPT level. Ruby still renders each original token independently.
+`乗った`, `食べました`, `降って`, common negative/polite/passive/causative/desiderative
+chains and adjectival negatives share a highlight. The exact supported endings and
+limits are documented in README's reader section. Source gaps, punctuation, following
+verbs, noun copulas and unrelated particles/affixes stop grouping. This deliberately
+is not a full grammar parser or a promise to group every possible construction.
+
+Analyzed tokens, dictionary forms, unknown-vocabulary counts, name styling and
+independent kanji visibility remain unchanged. The shared tokenizer and Anki cue
+renderer do not use this display policy. The regenerated preview shows continuous
+article highlights while its analysis tables still show the native C-mode tokens.
+The first-version plan and verification below retain their historical scope.
+
 ## Follow-up: shared tokenizer and Anki cues (issue #18)
 
 The reader-only migration below is historical scope. The follow-up extracts native

@@ -108,12 +108,24 @@ the reader blocks the result rather than silently treating it as empty. Real Ank
 verification of this new reader path remains pending; offline tests mock all IO.
 
 The reader uses **Sudachi C-mode segmentation** with its core dictionary. Only
-kanji-containing vocabulary receives JLPT backgrounds. Kana-only words, particles,
-auxiliaries and standalone affixes remain neutral. Native boundaries are accepted:
-`食べました` can remain `食べ / まし / た`, and `子供っぽい` can remain
-`子供 / っぽい`; no custom inflection/compound merging is applied. Dictionary-form
-matching handles inflections without marking unrelated kanji homophones as known.
-JLPT vocabulary data is unofficial and incomplete; unlisted words remain uncoloured.
+kanji-containing vocabulary receives JLPT backgrounds. The reader extends a verb
+or adjective's background over common adjacent inflection endings, so `乗った`,
+`食べました` and `降って` each have one continuous highlight. This is display-only:
+Sudachi still supplies separate tokens such as `食べ / まし / た`; vocabulary
+matching, counts and JLPT level come from the lexical token, not its endings.
+
+The bounded display policy includes past/conditional `た`, polite `ます`/`です`,
+negative `ない`/`ぬ`, passive/potential `れる`/`られる`, causative `せる`/`させる`,
+desiderative `たい`, and connective `て`/`で`. Adjectival negatives such as
+`難しくない` are also grouped. Grouping stops at whitespace, punctuation or other
+words: `降ってきた` highlights `降って` but leaves the kana continuation neutral.
+Noun copulas, standalone particles/auxiliaries and affixes remain separate;
+`子供っぽい` still uses `子供 / っぽい`. This is not a general phrase or compound
+joining engine and does not affect Anki cue rendering.
+
+Dictionary-form matching handles inflections without marking unrelated kanji
+homophones as known. JLPT vocabulary data is unofficial and incomplete; unlisted
+words remain uncoloured, including their display-grouped endings.
 
 Parser-tagged person and place names have **dotted underlines** rather than JLPT
 backgrounds and are omitted from the unknown-vocabulary list. This is a small use of

@@ -81,8 +81,10 @@ boundaries by user choice; human annotation spans are comparison material, not a
 parser contract. Keep vocabulary knowledge separate from kanji-based ruby visibility.
 Reader and Anki cues share `japanese_tokenizer.py` for source-preserving Sudachi
 C-mode analysis and safe long-input handling. Keep reader newline normalization,
-vocabulary filtering, JLPT metadata and name styling in the reader layer. Cues
-preserve raw definition whitespace and the Anki `rt.known` CSS contract.
+vocabulary filtering, JLPT metadata and name styling in the reader layer.
+`article_render.py` groups common adjacent inflection endings for continuous reader
+highlights; preserve native tokens, per-token ruby and lexical vocabulary counts.
+Cues preserve raw definition whitespace and the Anki `rt.known` CSS contract.
 
 ---
 
