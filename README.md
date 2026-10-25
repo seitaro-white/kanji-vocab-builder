@@ -147,12 +147,43 @@ compatibility, avoiding the currently unstable 0.7 transition. The core dictiona
 adds roughly 70 MB compressed to installation. Sudachi code/dictionary package licensing
 is Apache-2.0 with additional incorporated-resource notices; retain those notices when
 redistributing. See [SudachiDict LEGAL](https://github.com/WorksApplications/SudachiDict/blob/develop/LEGAL).
-Fugashi remains installed for Anki cue rendering outside this reader.
+The reader and Anki Japanese-definition cues share one UI-independent Sudachi
+C-mode tokenizer; Fugashi and UniDic-lite are no longer required.
 
 To retain the 50,000-character input limit within Sudachi's byte limits, long articles
 are chunked near sentence/newline boundaries. Extremely long unbroken text may be split
 inside a word; normalization-expanded input is reduced into smaller chunks if needed.
-No source characters are dropped.
+No source characters are dropped. The same size handling applies to Japanese cues.
+
+#### Anki cue tokenization migration
+
+New Japanese-definition cues use the same pinned Sudachi engine/core dictionary.
+They retain the original source text, including CR/LF, repeated blank lines and
+leading/trailing whitespace: the reader's newline normalization is **not** applied
+to stored definitions. Each sense still has its own escaped `<div class="sense">`
+block, separated by `<br>`, and ruby visibility still uses Anki's `rt.known` class.
+Reader JLPT metadata, vocabulary filters and name styling do not enter card HTML.
+
+Native C-mode boundaries/readings can differ from the former Fugashi/UniDic-lite
+output. Representative offline comparisons:
+
+| Text | Former cue analysis | Sudachi cue analysis |
+| --- | --- | --- |
+| `国家公務員` | `国家 / 公務 / 員` | One ruby group, `こっかこうむいん` |
+| `東京都` | `東京 / 都` | One ruby group, `とうきょうと` |
+| `食べました` | `食べ / まし / た` | Same boundaries; okurigana remains outside ruby |
+| `取り扱う`, `大人` | Kana-aligned / irregular grouped ruby | Same rendering structure |
+| `今日` in the comparison phrase `取り扱う 大人 今日 一日` | `こんにち` | `きょう` |
+
+Readings remain contextual, not guaranteed for ambiguous words or names. Missing
+and out-of-vocabulary readings remain plain text; for example Sudachi tagged `一`
+in that comparison phrase as OOV, so it receives no ruby. Larger ruby groups also
+mean their reading stays visible until **all** represented kanji are known. No
+custom joining, deinflection, name recognition or extra dictionary is applied.
+
+This affects **future cue generation only**. Existing notes are not regenerated,
+card templates are unchanged, and target-word front-card furigana still comes from
+Jisho. Regenerating stored cue fields requires a separate explicit decision.
 
 ### Vocabulary cards and commit review
 
