@@ -47,7 +47,12 @@ def render_native_preview(corpus: dict) -> str:
     ).replace(
         '<script src="/static/article_reader.js" defer></script>',
         f"<script>{javascript}</script>",
-    ).replace('<a href="/" class="start-over">Start Over</a>', "")
+    ).replace(
+        '      <nav class="reader-navigation" aria-label="Reader navigation">\n'
+        '        <a href="/" class="start-over">Start Over</a>\n'
+        '      </nav>',
+        "",
+    )
     sections = []
     for case in cases:
         tokens = analyze_article(case["source"], set())

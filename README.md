@@ -78,6 +78,9 @@ Make sure Anki is running and run `kanji-vocab-miner` to start the interactive s
 
 ### Furigana article reader
 
+The visual refresh and verification status are tracked in the
+[frontend polish plan](docs/reader-frontend-plan.md).
+
 Start the localhost-only web reader with Anki Desktop and AnkiConnect running:
 
 ```bash
@@ -96,7 +99,11 @@ Runs of blank lines are reduced to one blank line between paragraphs. Below
 the article, an unknown-vocabulary list groups dictionary forms from N5 through
 N1, followed by unlisted words. Entries show their article frequency and are
 sorted by descending frequency within each level; ties retain first-appearance
-order. **Start Over** returns to an empty editor.
+order. The responsive vocabulary grid shows each level's distinct-word count and
+compact frequency badges. Highlighted words have subtle inline outlines, while
+known words stay visually quiet until highlighting is enabled. The grouped furigana
+controls and separate highlighting toggle work without reprocessing the article.
+**Start Over** returns to an empty editor (or the sample text in the explicit demo).
 
 A token is treated as known when its normalized dictionary identity matches an
 `Expression` in the configured Anki vocabulary deck or an entry in

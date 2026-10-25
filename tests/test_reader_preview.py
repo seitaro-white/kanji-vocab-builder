@@ -46,6 +46,8 @@ def test_native_preview_is_standalone_and_offline(
 
     assert parsed.find("link", rel="stylesheet") is None
     assert parsed.find("script", src=True) is None
+    assert parsed.find(class_="reader-navigation") is None
+    assert parsed.find(class_="start-over") is None
     assert "SudachiPy 0.6.11" in parsed.get_text()
     assert "SudachiDict-core 20260428" in parsed.get_text()
     assert len(parsed.select("#native-boundaries section")) == 9
