@@ -1,0 +1,170 @@
+:root {
+  color: #1f2933;
+  background: #f5f7fa;
+  font-family: system-ui, sans-serif;
+  line-height: 1.65;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 72rem;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(1rem, 4vw, 3rem);
+}
+
+h1 {
+  line-height: 1.2;
+}
+
+form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 65vh;
+  padding: 1rem;
+  border: 1px solid #9aa5b1;
+  border-radius: 0.5rem;
+  font: 1.1rem/1.7 system-ui, sans-serif;
+  resize: vertical;
+}
+
+button,
+.start-over {
+  display: inline-block;
+  width: fit-content;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #52606d;
+  border-radius: 0.4rem;
+  color: #102a43;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+.start-over:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #2680c2;
+  outline-offset: 2px;
+}
+
+.reader-controls,
+.reader-controls > div,
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+
+.reader-controls > div {
+  margin-block: 0;
+}
+
+.reader-controls [aria-pressed="true"] {
+  color: #fff;
+  background: #243b53;
+}
+
+.article {
+  margin-block: 1.5rem;
+  padding: clamp(1rem, 3vw, 2rem);
+  border-radius: 0.6rem;
+  background: #fff;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  line-height: 2.2;
+  white-space: pre-wrap;
+}
+
+.token,
+.legend span {
+  border-radius: 0.2rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.legend span {
+  padding: 0.15rem 0.5rem;
+}
+
+.jlpt-n5 { background: #d8f3d1; }
+.jlpt-n4 { background: #e8f5bf; }
+.jlpt-n3 { background: #fff4ad; }
+.jlpt-n2 { background: #ffe0a3; }
+.jlpt-n1 { background: #ffc9c9; }
+
+.jlpt-highlight-unknown .known.jlpt-n5,
+.jlpt-highlight-unknown .known.jlpt-n4,
+.jlpt-highlight-unknown .known.jlpt-n3,
+.jlpt-highlight-unknown .known.jlpt-n2,
+.jlpt-highlight-unknown .known.jlpt-n1 {
+  background: transparent;
+}
+
+.furigana-mode-unknown rt.known-kanji,
+.furigana-mode-none rt {
+  display: none;
+}
+
+.name {
+  /* A base-text border does not propagate an underline into ruby annotations. */
+  border-bottom: 2px dotted #52606d;
+}
+
+.name-legend {
+  background: transparent;
+}
+
+.demo-notice {
+  padding: 0.5rem 0.8rem;
+  border-left: 0.3rem solid #2680c2;
+  background: #e7f3ff;
+}
+
+.unknown-dictionary {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #bcccdc;
+}
+
+.unknown-dictionary section {
+  margin-block: 1.25rem;
+}
+
+.unknown-dictionary h3 {
+  margin-bottom: 0.35rem;
+}
+
+.unknown-dictionary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unknown-dictionary li {
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  padding: 0.75rem 1rem;
+  border-left: 0.3rem solid #c53030;
+  color: #742a2a;
+  background: #fff5f5;
+}
+
+@media (max-width: 40rem) {
+  .reader-controls button {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}

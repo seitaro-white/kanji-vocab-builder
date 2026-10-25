@@ -7,8 +7,12 @@ from typing import List, Set
 
 from fugashi import Tagger, UnidicNode
 
-_KANJI_RE = re.compile(r"[\u4e00-\u9fff]")
-_TOKEN_CHUNK_RE = re.compile(r"[\u4e00-\u9fff]+|[^\u4e00-\u9fff]+")
+_KANJI_RANGE = (
+    r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+    r"\U00020000-\U0002fa1f\U00030000-\U000323af"
+)
+_KANJI_RE = re.compile(f"[{_KANJI_RANGE}]")
+_TOKEN_CHUNK_RE = re.compile(f"[{_KANJI_RANGE}]+|[^{_KANJI_RANGE}]+")
 _KANA_RE = re.compile(r"^[\u3040-\u30ffー]+$")
 
 
@@ -28,22 +32,24 @@ def _to_hiragana(text: str) -> str:
     )
 
 
-def _ruby(base: str, reading: str, reviewed_kanji: Set[str]) -> str:
+def _ruby(
+    base: str, reading: str, reviewed_kanji: Set[str], known_class: str = "known"
+) -> str:
     kanji = _KANJI_RE.findall(base)
-    css_class = ' class="known"' if kanji and all(
+    css_class = f' class="{escape(known_class, quote=True)}"' if kanji and all(
         character in reviewed_kanji for character in kanji
     ) else ""
     return f"<ruby>{escape(base)}<rt{css_class}>{escape(reading)}</rt></ruby>"
 
 
 def _render_aligned_token(
-    surface: str, reading: str, reviewed_kanji: Set[str]
+    surface: str, reading: str, reviewed_kanji: Set[str], known_class: str = "known"
 ) -> str | None:
     """Align kanji chunks when surrounding kana makes each split unambiguous."""
 
     chunks = _TOKEN_CHUNK_RE.findall(surface)
     if any(
-        not _KANJI_RE.fullmatch(chunk) and not _KANA_RE.fullmatch(chunk)
+        not _KANJI_RE.search(chunk) and not _KANA_RE.fullmatch(chunk)
         for chunk in chunks
     ):
         return None
@@ -51,7 +57,7 @@ def _render_aligned_token(
     rendered: List[str] = []
     reading_position = 0
     for index, chunk in enumerate(chunks):
-        if not _KANJI_RE.fullmatch(chunk):
+        if not _KANJI_RE.search(chunk):
             kana = _to_hiragana(chunk)
             if not reading.startswith(kana, reading_position):
                 return None
@@ -66,36 +72,43 @@ def _render_aligned_token(
         else:
             anchor = _to_hiragana(next_kana)
             anchor_position = reading.find(anchor, reading_position)
-            if anchor_position <= reading_position:
+            if anchor_position <= reading_position or reading.find(
+                anchor, anchor_position + 1
+            ) != -1:
                 return None
             chunk_reading = reading[reading_position:anchor_position]
             reading_position = anchor_position
 
         if not chunk_reading:
             return None
-        rendered.append(_ruby(chunk, chunk_reading, reviewed_kanji))
+        rendered.append(_ruby(chunk, chunk_reading, reviewed_kanji, known_class))
 
     return "".join(rendered) if reading_position == len(reading) else None
 
 
+def render_token_furigana(
+    surface: str,
+    reading: str | None,
+    reviewed_kanji: Set[str] | None = None,
+    *,
+    known_class: str = "known",
+) -> str:
+    """Render one surface with aligned ruby, falling back to whole-token ruby."""
+    reviewed_kanji = reviewed_kanji or set()
+    if not _KANJI_RE.search(surface) or not reading or reading == "*":
+        return escape(surface)
+
+    normalized_reading = _to_hiragana(reading)
+    aligned = _render_aligned_token(
+        surface, normalized_reading, reviewed_kanji, known_class
+    )
+    return aligned or _ruby(surface, normalized_reading, reviewed_kanji, known_class)
+
+
 def _render_token(token: UnidicNode, reviewed_kanji: Set[str]) -> str:
     """Render one Fugashi token as escaped text or owned ruby HTML."""
-    surface = str(token)
-    leading_space = escape(token.white_space)
-
-    if not _KANJI_RE.search(surface):
-        return leading_space + escape(surface)
-
-    raw_reading = token.feature.kana
-    # UniDic uses "*" as a sentinel when a feature has no dictionary value.
-    # Unknown kanji are therefore preserved rather than given a guessed reading.
-    if not raw_reading or raw_reading == "*":
-        return leading_space + escape(surface)
-
-    reading = _to_hiragana(raw_reading)
-    aligned = _render_aligned_token(surface, reading, reviewed_kanji)
-    return leading_space + (
-        aligned if aligned is not None else _ruby(surface, reading, reviewed_kanji)
+    return escape(token.white_space) + render_token_furigana(
+        str(token), token.feature.kana, reviewed_kanji
     )
 
 

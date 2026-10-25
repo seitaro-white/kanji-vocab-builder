@@ -71,6 +71,16 @@ These are the canonical commands. Prefer the most specific scope possible (file 
 
 ---
 
+## Web Reader
+
+For reader changes, read the **Furigana article reader** section of `README.md` for
+setup, offline demo and validation examples. The reader uses native Sudachi C-mode
+boundaries by user choice; human annotation spans are comparison material, not an exact
+parser contract. Keep vocabulary knowledge separate from kanji-based ruby visibility.
+Fugashi remains in use for shared Anki cue rendering.
+
+---
+
 ## Code Style Guidelines
 
 ### Imports
