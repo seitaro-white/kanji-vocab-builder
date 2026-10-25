@@ -102,16 +102,10 @@ def render_japanese_cue(senses: List[str], reviewed_kanji: Set[str]) -> str:
     """Render native C-mode ruby per sense, preserving unnormalized source text."""
     rendered_senses: List[str] = []
     for sense in senses:
-        fragments: List[str] = []
-        previous_end = 0
-        for token in tokenize_japanese(sense):
-            fragments.append(escape(sense[previous_end:token.start]))
-            fragments.append(
-                render_token_furigana(token.surface, token.reading, reviewed_kanji)
-            )
-            previous_end = token.end
-        fragments.append(escape(sense[previous_end:]))
-        content = "".join(fragments)
+        content = "".join(
+            render_token_furigana(token.surface, token.reading, reviewed_kanji)
+            for token in tokenize_japanese(sense)
+        )
         rendered_senses.append(f'<div class="sense">{content}</div>')
     return "<br>".join(rendered_senses)
 

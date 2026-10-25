@@ -40,5 +40,16 @@ def test_oov_has_no_fabricated_reading() -> None:
     assert [(token.surface, token.reading) for token in tokens] == [("𠮷𠮷", None)]
 
 
+@pytest.mark.parametrize("source", [" ", "\t\r\n\n\n　  ", "\u00a0\u2003\u2028"])
+def test_whitespace_only_input_is_covered_contiguously(source: str) -> None:
+    tokens = list(tokenize_japanese(source))
+
+    assert "".join(token.surface for token in tokens) == source
+    assert tokens[0].start == 0
+    assert tokens[-1].end == len(source)
+    assert all(left.end == right.start for left, right in pairwise(tokens))
+    assert all(source[token.start:token.end] == token.surface for token in tokens)
+
+
 def test_empty_input_has_no_tokens() -> None:
     assert list(tokenize_japanese("")) == []

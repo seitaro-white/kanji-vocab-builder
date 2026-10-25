@@ -54,6 +54,9 @@ def _get_tokenizer() -> tokenizer.Tokenizer:
 def tokenize_japanese(text: str) -> Iterator[JapaneseToken]:
     """Yield native C-mode tokens without normalizing or filtering source text.
 
+    Tokens cover the entire input contiguously, including all whitespace:
+    joining their surfaces reconstructs ``text`` exactly. Empty input yields none.
+
     Batch near sentence/newline boundaries within Sudachi's ~49KB input limit.
     Hard split unpunctuated passages at 12,000 code points (at most 48,000 UTF-8
     bytes). Normalization expansion may require smaller retries. Hard splits can

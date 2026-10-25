@@ -115,7 +115,7 @@ def analyze_article(text: str, known_words: set[str]) -> list[ArticleToken]:
     whitespace = ""
     for token in tokenize_japanese(normalized_text):
         start, end = token.start, token.end
-        surface = normalized_text[start:end]
+        surface = token.surface
         whitespace += normalized_text[previous_end:start]
         previous_end = end
         part_of_speech = token.part_of_speech
