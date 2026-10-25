@@ -1,11 +1,10 @@
 """Context-aware furigana rendering for Japanese definition cues."""
 
 import re
-from functools import lru_cache
 from html import escape
 from typing import List, Set
 
-from fugashi import Tagger, UnidicNode
+from kanji_vocab_miner.japanese_tokenizer import tokenize_japanese
 
 _KANJI_RANGE = (
     r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
@@ -14,12 +13,6 @@ _KANJI_RANGE = (
 _KANJI_RE = re.compile(f"[{_KANJI_RANGE}]")
 _TOKEN_CHUNK_RE = re.compile(f"[{_KANJI_RANGE}]+|[^{_KANJI_RANGE}]+")
 _KANA_RE = re.compile(r"^[\u3040-\u30ffー]+$")
-
-
-@lru_cache(maxsize=1)
-def _get_tagger() -> Tagger:
-    """Return one lazily initialized tokenizer instance."""
-    return Tagger()
 
 
 def _to_hiragana(text: str) -> str:
@@ -105,26 +98,20 @@ def render_token_furigana(
     return aligned or _ruby(surface, normalized_reading, reviewed_kanji, known_class)
 
 
-def _render_token(token: UnidicNode, reviewed_kanji: Set[str]) -> str:
-    """Render one Fugashi token as escaped text or owned ruby HTML."""
-    return escape(token.white_space) + render_token_furigana(
-        str(token), token.feature.kana, reviewed_kanji
-    )
-
-
 def render_japanese_cue(senses: List[str], reviewed_kanji: Set[str]) -> str:
-    """Return escaped ruby HTML with one visual block per Japanese sense."""
-    tagger = _get_tagger()
+    """Render native C-mode ruby per sense, preserving unnormalized source text."""
     rendered_senses: List[str] = []
     for sense in senses:
-        tokens = list(tagger(sense))
-        content = "".join(
-            _render_token(token, reviewed_kanji) for token in tokens
-        )
-        consumed_length = sum(
-            len(token.white_space) + len(str(token)) for token in tokens
-        )
-        content += escape(sense[consumed_length:])
+        fragments: List[str] = []
+        previous_end = 0
+        for token in tokenize_japanese(sense):
+            fragments.append(escape(sense[previous_end:token.start]))
+            fragments.append(
+                render_token_furigana(token.surface, token.reading, reviewed_kanji)
+            )
+            previous_end = token.end
+        fragments.append(escape(sense[previous_end:]))
+        content = "".join(fragments)
         rendered_senses.append(f'<div class="sense">{content}</div>')
     return "<br>".join(rendered_senses)
 

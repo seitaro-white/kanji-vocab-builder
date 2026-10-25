@@ -1,5 +1,10 @@
 """Tests for Japanese cue furigana rendering."""
 
+import re
+from html import unescape
+
+import pytest
+
 from kanji_vocab_miner.furigana import (
     render_japanese_cue,
     render_token_furigana,
@@ -104,6 +109,48 @@ def test_render_japanese_cue_preserves_multiple_sense_boundaries() -> None:
 
     assert rendered.count('<div class="sense">') == 2
     assert "</div><br><div" in rendered
+
+
+def test_cue_uses_native_c_mode_compounds_and_contextual_reading() -> None:
+    """Snapshot native compound grouping and a contextual reading."""
+    assert render_japanese_cue(["国家公務員 今日"], set("国家公務員")) == (
+        '<div class="sense"><ruby>国家公務員<rt class="known">'
+        'こっかこうむいん</rt></ruby> <ruby>今日<rt>きょう</rt></ruby></div>'
+    )
+
+
+def test_cue_preserves_raw_whitespace_empty_senses_and_unknown_kanji() -> None:
+    assert render_japanese_cue(["\t 猫\r\n\n\n　𠮷𠮷\r  ", "", "  "], {"猫"}) == (
+        '<div class="sense">\t <ruby>猫<rt class="known">ねこ</rt></ruby>'
+        '\r\n\n\n　𠮷𠮷\r  </div><br><div class="sense"></div>'
+        '<br><div class="sense">  </div>'
+    )
+
+
+@pytest.mark.parametrize("character", ["あ", "㌖", "😀"])
+def test_long_cue_preserves_source_without_reader_normalization(character: str) -> None:
+    source = "\t猫。\r\n" + character * 50_000 + "\n\n\n犬  "
+    rendered = render_japanese_cue([source], set())
+    without_readings = re.sub(r"<rt[^>]*>.*?</rt>", "", rendered, flags=re.DOTALL)
+    assert unescape(re.sub(r"<[^>]+>", "", without_readings)) == source
+
+
+@pytest.mark.parametrize("reading", [None, "", "*"])
+def test_missing_token_reading_is_plain_escaped_text(reading: str | None) -> None:
+    assert render_token_furigana("未知<&", reading) == "未知&lt;&amp;"
+
+
+def test_token_reading_cannot_inject_html() -> None:
+    assert render_token_furigana("猫", "</rt><script>") == (
+        '<ruby>猫<rt>&lt;/rt&gt;&lt;script&gt;</rt></ruby>'
+    )
+
+
+def test_cue_names_use_card_ruby_without_reader_styling() -> None:
+    assert render_japanese_cue(["山田さんは東京都。"], {"山", "田", "東"}) == (
+        '<div class="sense"><ruby>山田<rt class="known">やまだ</rt></ruby>'
+        'さんは<ruby>東京都<rt>とうきょうと</rt></ruby>。</div>'
+    )
 
 
 def test_update_furigana_visibility_updates_single_kanji_ruby() -> None:

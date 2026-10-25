@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import requests
@@ -294,6 +295,47 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
     assert added_notes[1]["fields"]["Recall"] == "1"
     assert all(note["deckName"] == connect.VOCAB_DECK_NAME for note in added_notes)
     assert all(note["modelName"] == "MyJapaneseVocabularyV3" for note in added_notes)
+
+
+def test_add_vocab_items_prepares_native_sudachi_cue_with_mocked_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise real cue generation while keeping every external operation mocked."""
+    item = PendingVocabItem(
+        word=JishoWord(expression="猫", kana="ねこ", jlpt=5, definitions=["cat"])
+    )
+    definition = JapaneseDefinition(
+        expression="猫",
+        senses=[" 国家公務員\r\n\n\n𠮷𠮷 ", "<猫>"],
+        source_name="辞書",
+        source_url="https://example.test/cat",
+    )
+    notes: list[dict[str, Any]] = []
+    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
+    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set("国家公務員"))
+    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "jisho-front")
+
+    def capture_note(action: str, **params: Any) -> int:
+        assert action == "addNote"
+        notes.append(params["note"])
+        return 123
+
+    monkeypatch.setattr(connect, "send_request", capture_note)
+    result = connect.add_vocab_items(
+        [item],
+        client=SimpleNamespace(lookup=lambda expression: definition),
+        enrichment_client=FakeEnrichmentClient(),
+        config=_config(),
+    )
+
+    assert result.added == [item]
+    assert result.failed == []
+    assert notes[0]["fields"]["Front"] == "jisho-front"
+    assert notes[0]["fields"]["JapaneseCue"] == (
+        '<div class="sense"> <ruby>国家公務員<rt class="known">こっかこうむいん'
+        '</rt></ruby>\r\n\n\n𠮷𠮷 </div><br><div class="sense">'
+        '&lt;<ruby>猫<rt>ねこ</rt></ruby>&gt;</div>'
+    )
 
 
 def test_add_vocab_items_classifies_partial_failures_and_duplicates(monkeypatch) -> None:

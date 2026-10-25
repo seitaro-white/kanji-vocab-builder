@@ -79,7 +79,10 @@ For reader changes, read the **Furigana article reader** section of `README.md` 
 setup, offline demo and validation examples. The reader uses native Sudachi C-mode
 boundaries by user choice; human annotation spans are comparison material, not an exact
 parser contract. Keep vocabulary knowledge separate from kanji-based ruby visibility.
-Fugashi remains in use for shared Anki cue rendering.
+Reader and Anki cues share `japanese_tokenizer.py` for source-preserving Sudachi
+C-mode analysis and safe long-input handling. Keep reader newline normalization,
+vocabulary filtering, JLPT metadata and name styling in the reader layer. Cues
+preserve raw definition whitespace and the Anki `rt.known` CSS contract.
 
 ---
 

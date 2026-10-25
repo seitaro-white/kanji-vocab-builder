@@ -2,15 +2,15 @@
 
 import re
 import unicodedata
-from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
-from threading import local
-
-from sudachipy import dictionary, morpheme, tokenizer
-from sudachipy.errors import SudachiError
 
 from kanji_vocab_miner.furigana import _KANJI_RE, _to_hiragana
+from kanji_vocab_miner.japanese_tokenizer import (
+    JapaneseToken,
+    PartOfSpeech,
+    tokenize_japanese,
+)
 from kanji_vocab_miner.jlpt import get_level_index
 
 _EXCLUDED_VOCABULARY_PARTS = {
@@ -22,22 +22,6 @@ _EXCLUDED_VOCABULARY_PARTS = {
     "記号",      # Other symbols.
     "空白",      # Whitespace.
 }
-
-
-@dataclass(frozen=True)
-class PartOfSpeech:
-    """Named fields of Sudachi's six-element POS tuple, in its native order.
-
-    For 山田: category=名詞 (noun), subcategory=固有名詞 (proper noun),
-    subclass=人名 (person), detail=姓 (surname). Unused fields contain '*'.
-    """
-
-    category: str
-    subcategory: str
-    subclass: str
-    detail: str
-    conjugation_type: str
-    conjugation_form: str
 
 
 def _is_vocabulary(surface: str, part_of_speech: PartOfSpeech | None) -> bool:
@@ -99,59 +83,9 @@ def normalize_identity(value: str) -> str:
     return _to_hiragana(unicodedata.normalize("NFKC", value).strip())
 
 
-_parser_state = local()
-
-
-def _get_reader_tokenizer() -> tokenizer.Tokenizer:
-    """Reuse a tokenizer without sharing writable scratch memory across threads.
-
-    Sudachi updates internal buffers during tokenization. Each request thread
-    gets its own instance so concurrent requests do not overwrite that state.
-    """
-    if not hasattr(_parser_state, "tokenizer"):
-        _parser_state.tokenizer = dictionary.Dictionary(dict="core").create()
-    return _parser_state.tokenizer
-
-
-def _iter_article_morphemes(
-    text: str,
-) -> Iterator[tuple[morpheme.Morpheme, int]]:
-    """Yield native tokens and chunk offsets within Sudachi's ~49KB input limit.
-
-    Batch near sentence/newline boundaries to avoid a parser call per sentence.
-    Offsets are local to a chunk; the yielded start offset maps them to the article.
-    Sentence-by-sentence parsing would work too, but a single long sentence can
-    still exceed the byte limit and needs this size guard.
-
-    Hard split unpunctuated passages at 12,000 code points (at most 48,000 UTF-8
-    bytes). Normalization can expand text, so shrink oversized chunks further.
-    """
-    parser = _get_reader_tokenizer()
-    start = 0
-    while start < len(text):
-        end = min(start + 12_000, len(text))
-        if end < len(text):
-            boundary = max(text.rfind(mark, start, end) for mark in "\n。！？!?")
-            if boundary >= start:
-                end = boundary + 1
-        while True:
-            try:
-                tokens = parser.tokenize(
-                    text[start:end], tokenizer.Tokenizer.SplitMode.C
-                )
-                break
-            except SudachiError as error:
-                if "Input is too long" not in str(error) or end - start <= 1:
-                    raise
-                end = start + (end - start) // 2
-        for token in tokens:
-            yield token, start
-        start = end
-
-
-def token_identities(token: morpheme.Morpheme) -> tuple[str, ...]:
+def token_identities(token: JapaneseToken) -> tuple[str, ...]:
     """Return dictionary and surface identities without reading homophone matches."""
-    candidates = (token.dictionary_form(), token.surface())
+    candidates = (token.dictionary_form, token.surface)
     return tuple(
         dict.fromkeys(
             normalize_identity(candidate)
@@ -179,12 +113,12 @@ def analyze_article(text: str, known_words: set[str]) -> list[ArticleToken]:
     tokens: list[ArticleToken] = []
     previous_end = 0
     whitespace = ""
-    for token, offset in _iter_article_morphemes(normalized_text):
-        start, end = offset + token.begin(), offset + token.end()
+    for token in tokenize_japanese(normalized_text):
+        start, end = token.start, token.end
         surface = normalized_text[start:end]
         whitespace += normalized_text[previous_end:start]
         previous_end = end
-        part_of_speech = PartOfSpeech(*token.part_of_speech())
+        part_of_speech = token.part_of_speech
         if part_of_speech.category == "空白":
             whitespace += surface
             continue
@@ -212,8 +146,8 @@ def analyze_article(text: str, known_words: set[str]) -> list[ArticleToken]:
                 surface=surface,
                 leading_whitespace=whitespace,
                 reading=(
-                    _to_hiragana(token.reading_form())
-                    if token.reading_form() and not token.is_oov()
+                    _to_hiragana(token.reading)
+                    if token.reading
                     else None
                 ),
                 identities=identities,

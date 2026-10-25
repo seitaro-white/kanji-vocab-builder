@@ -24,6 +24,34 @@ References:
 - [Initial research](reader-parsing-research.md)
 - [Sudachi Python documentation](https://github.com/WorksApplications/sudachi.rs/tree/develop/python)
 
+## Follow-up: shared tokenizer and Anki cues (issue #18)
+
+The reader-only migration below is historical scope. The follow-up extracts native
+C-mode parsing, named `PartOfSpeech` fields and the existing safe chunk/retry logic
+into `kanji_vocab_miner/japanese_tokenizer.py`. Its immutable tokens contain original
+source slices, absolute code-point offsets, dictionary forms, native readings and
+POS; no Flask, HTML, JLPT or inventory dependencies are introduced.
+
+`article_reader.py` still owns newline normalization, vocabulary identities,
+filtering, name classification and JLPT metadata. `furigana.py` now consumes the same
+tokenizer for each unnormalized definition sense and reuses `render_token_furigana`
+with its default Anki `rt.known` contract. OOV/missing readings stay plain.
+
+The caller audit found Fugashi only in the old cue renderer. Its production caller
+is `anki/connect.py:add_vocab_items`; `scripts/preview_vocab_v2.py` also uses the
+public cue renderer. Jisho front-card readings are a separate retrieval path.
+Fugashi/UniDic-lite have been removed from dependency metadata and the lockfile;
+the compatible Sudachi pins are unchanged. Historical research/plans retain their
+original parser comparisons. See README's **Anki cue tokenization migration** for
+reviewed boundary/reading differences and stored-note limitations.
+
+Offline regression coverage includes raw cue CR/LF/blank lines, empty/multiple
+senses, escaping, native compounds, names without reader styling, grouped known
+kanji, missing/OOV readings, 50,000-character normalization-expanding input and
+real cue generation through mocked note preparation. Existing reader metadata,
+name treatment and independent vocabulary/kanji visibility tests remain in place.
+No live Anki calls, note regeneration or template changes are part of this work.
+
 ## What Sudachi supplies versus what we implement
 
 | Capability | First-version approach |
