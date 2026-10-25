@@ -9,19 +9,27 @@
 </head>
 <body>
   <main>
-    <h1>Furigana Article Reader</h1>
+    <header class="page-header">
+      <p class="eyebrow">Japanese reading workspace</p>
+      <h1>Furigana Article Reader</h1>
+      <p class="page-description">A little clarity for your next Japanese read.</p>
+    </header>
     {% if config.READER_DEMO %}
       <p class="demo-notice">Demo — offline mock vocabulary and known kanji. No Anki connection.</p>
     {% endif %}
     {% if article_html %}
-      <div class="reader-controls" aria-label="Reader display options">
-        <div role="group" aria-label="Furigana display mode">
+      <nav class="reader-navigation" aria-label="Reader navigation">
+        <a href="/" class="start-over">Start Over</a>
+      </nav>
+      <section class="reader-controls" aria-label="Reader display options">
+        <fieldset class="furigana-controls">
+          <legend class="visually-hidden">Furigana display mode</legend>
           <button type="button" data-furigana-mode="unknown" aria-pressed="true">Unknown kanji only</button>
           <button type="button" data-furigana-mode="all" aria-pressed="false">All furigana</button>
           <button type="button" data-furigana-mode="none" aria-pressed="false">No furigana</button>
-        </div>
+        </fieldset>
         <button type="button" data-jlpt-toggle aria-pressed="false">Highlight known words</button>
-      </div>
+      </section>
       <aside class="legend" aria-label="JLPT colour legend">
         <span class="jlpt-n5">N5</span>
         <span class="jlpt-n4">N4</span>
@@ -30,29 +38,37 @@
         <span class="jlpt-n1">N1</span>
         <span class="name name-legend" title="Parser-recognized person or place">Person / place name</span>
       </aside>
-      <article class="article furigana-mode-unknown jlpt-highlight-unknown">{{ article_html }}</article>
-      <a href="/" class="start-over">Start Over</a>
+      <article class="article furigana-mode-unknown jlpt-highlight-unknown" lang="ja">{{ article_html }}</article>
       {% if unknown_vocabulary_groups %}
         <section id="unknown-dictionary" class="unknown-dictionary" aria-labelledby="unknown-dictionary-heading">
           <h2 id="unknown-dictionary-heading">Unknown vocabulary</h2>
-          {% for group in unknown_vocabulary_groups %}
-            <section>
-              <h3>{% if group.jlpt_level %}N{{ group.jlpt_level }}{% else %}Unlisted{% endif %}</h3>
-              <ul>
-                {% for word in group.word_counts %}
-                  <li>{{ word.dictionary_form }} × {{ word.occurrence_count }}</li>
-                {% endfor %}
+          <p class="section-description">Dictionary forms, grouped by JLPT level. Counts show how often each word appears.</p>
+          {%- for group in unknown_vocabulary_groups %}
+            <section class="vocabulary-group{% if group.jlpt_level %} vocabulary-n{{ group.jlpt_level }}{% endif %}">
+              <header class="vocabulary-group-header">
+                <h3>{% if group.jlpt_level %}N{{ group.jlpt_level }}{% else %}Unlisted{% endif %}</h3>
+                <span class="vocabulary-group-count">{{ group.word_counts|length }} {{ 'word' if group.word_counts|length == 1 else 'words' }}</span>
+              </header>
+              <!-- biome-ignore lint/a11y/noRedundantRoles: Keep list semantics in Safari when list-style is none. -->
+              <ul class="vocabulary-grid" role="list">
+                {%- for word in group.word_counts %}
+                  <li class="vocabulary-tile">
+                    <span class="vocabulary-expression" lang="ja">{{ word.dictionary_form }}</span>
+                    <span class="vocabulary-frequency"><span aria-hidden="true">× {{ word.occurrence_count }}</span><span class="visually-hidden">{{ word.occurrence_count }} {{ 'occurrence' if word.occurrence_count == 1 else 'occurrences' }} in this article</span></span>
+                  </li>
+                {%- endfor %}
               </ul>
             </section>
-          {% endfor %}
+          {%- endfor %}
         </section>
       {% endif %}
     {% else %}
       {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-      <form method="post">
+      <form method="post" class="editor-panel">
         <label for="article-text">Japanese text</label>
-        <textarea name="text" id="article-text">{{ source_text }}</textarea>
-        <button type="submit">Read Article</button>
+        <p id="article-help" class="section-description">Paste plain text, up to 50,000 characters. Your reading view will add furigana and JLPT highlights.</p>
+        <textarea name="text" id="article-text" lang="ja" aria-describedby="article-help">{{ source_text }}</textarea>
+        <button type="submit" class="primary-action">Read Article</button>
       </form>
     {% endif %}
   </main>

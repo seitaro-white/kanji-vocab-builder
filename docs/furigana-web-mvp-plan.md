@@ -1,5 +1,10 @@
 # Furigana Article Reader MVP — Implementation Plan
 
+> Historical plan. For current visual-improvement work, use the
+> [frontend polish plan](reader-frontend-plan.md). The
+> [Sudachi implementation plan](reader-sudachi-implementation-plan.md) supersedes
+> this document's parser, knowledge, colouring and newline decisions.
+
 ## 1. Goal
 
 Add a localhost-only web reader to `kanji-vocab-miner`. A user pastes plain

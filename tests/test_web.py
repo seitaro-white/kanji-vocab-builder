@@ -5,9 +5,11 @@ from functools import partial
 import pytest
 import requests
 from bs4 import BeautifulSoup
+from flask import render_template
 
 from kanji_vocab_miner import known_words, web
 from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.article_reader import JlptVocabularyGroup, VocabularyCount
 from kanji_vocab_miner.web import create_app as create_reader_app
 
 # Every web test explicitly avoids real Anki kanji loading as well as vocabulary IO.
@@ -153,6 +155,14 @@ def test_success_replaces_editor_with_controls_and_start_over() -> None:
     assert b"All furigana" in response.data
     assert b"No furigana" in response.data
     assert b"Start Over" in response.data
+    parsed = BeautifulSoup(response.data, "html.parser")
+    fieldset = parsed.find("fieldset")
+    assert fieldset.find("legend").get_text() == "Furigana display mode"
+    assert [button["aria-pressed"] for button in fieldset.find_all("button")] == [
+        "true", "false", "false"
+    ]
+    assert all(button["type"] == "button" for button in fieldset.find_all("button"))
+    assert parsed.find("nav").find("a")["href"] == "/"
 
 
 def test_pasted_markup_is_displayed_as_text() -> None:
@@ -254,8 +264,63 @@ def test_result_dictionary_lists_unknown_words_but_not_known_words() -> None:
     parsed = BeautifulSoup(response.data, "html.parser")
     dictionary = parsed.find(id="unknown-dictionary")
     assert dictionary is not None
-    assert "犬 × 1" in dictionary.get_text(" ", strip=True)
+    assert "犬" in dictionary.get_text(" ", strip=True)
     assert "猫" not in dictionary.get_text(" ", strip=True)
+
+
+def test_vocabulary_groups_show_distinct_counts_and_accessible_frequencies() -> None:
+    app = create_app(expression_loader=set, known_loader=set)
+    response = app.test_client().post("/", data={"text": "犬 犬 猫"})
+    parsed = BeautifulSoup(response.data, "html.parser")
+    section = parsed.find(id="unknown-dictionary").find("section")
+
+    assert section.find("h3").get_text(strip=True) == "N5"
+    assert section.find(class_="vocabulary-group-count").get_text(strip=True) == "2 words"
+    entries = section.find("ul").find_all("li", recursive=False)
+    assert [
+        entry.find(class_="vocabulary-expression").get_text() for entry in entries
+    ] == ["犬", "猫"]
+    badges = [entry.find(class_="vocabulary-frequency") for entry in entries]
+    assert [
+        badge.find(attrs={"aria-hidden": "true"}).get_text() for badge in badges
+    ] == ["× 2", "× 1"]
+    assert [badge.find(class_="visually-hidden").get_text() for badge in badges] == [
+        "2 occurrences in this article",
+        "1 occurrence in this article",
+    ]
+    assert not section.select("a, button, [tabindex]")
+
+
+def test_vocabulary_template_escapes_expressions_and_labels_single_entries() -> None:
+    app = create_app(expression_loader=set, known_loader=set)
+    expression = '<img src=x onerror="alert(1)">猫'
+    # Exercise the template's escaping boundary with a hostile dictionary value,
+    # independent of whether the current tokenizer can produce that spelling.
+    with app.test_request_context("/"):
+        html = render_template(
+            "article_reader.html",
+            article_html="猫",
+            unknown_vocabulary_groups=(
+                JlptVocabularyGroup(None, (VocabularyCount(expression, 1),)),
+            ),
+        )
+    parsed = BeautifulSoup(html, "html.parser")
+    dictionary = parsed.find(id="unknown-dictionary")
+    assert dictionary.find("img") is None
+    assert dictionary.find(class_="vocabulary-expression").get_text() == expression
+    assert dictionary.find(class_="vocabulary-group-count").get_text() == "1 word"
+    assert dictionary.find(class_="visually-hidden").get_text() == (
+        "1 occurrence in this article"
+    )
+
+
+def test_known_only_result_omits_empty_vocabulary_section() -> None:
+    app = create_app(expression_loader=lambda: {"犬"}, known_loader=set)
+    response = app.test_client().post("/", data={"text": "犬"})
+    parsed = BeautifulSoup(response.data, "html.parser")
+
+    assert parsed.find("article") is not None
+    assert parsed.find(id="unknown-dictionary") is None
 
 
 def test_dictionary_combines_inflections_and_sorts_by_frequency() -> None:
@@ -266,10 +331,16 @@ def test_dictionary_combines_inflections_and_sorts_by_frequency() -> None:
     )
 
     parsed = BeautifulSoup(response.data, "html.parser")
-    n5_section = parsed.find("h3", string="N5").parent
-    assert [item.get_text(" ", strip=True) for item in n5_section.find_all("li")] == [
-        "食べる × 3",
-        "猫 × 2",
+    n5_section = parsed.find("h3", string="N5").find_parent("section")
+    assert [
+        (
+            item.find(class_="vocabulary-expression").get_text(),
+            item.find(class_="visually-hidden").get_text(),
+        )
+        for item in n5_section.find_all("li")
+    ] == [
+        ("食べる", "3 occurrences in this article"),
+        ("猫", "2 occurrences in this article"),
     ]
 
 
@@ -298,11 +369,11 @@ def test_equal_frequency_words_keep_first_appearance_order() -> None:
     response = app.test_client().post("/", data={"text": "犬 猫 犬 猫"})
 
     parsed = BeautifulSoup(response.data, "html.parser")
-    n5_section = parsed.find("h3", string="N5").parent
-    assert [item.get_text(" ", strip=True) for item in n5_section.find_all("li")] == [
-        "犬 × 2",
-        "猫 × 2",
-    ]
+    n5_section = parsed.find("h3", string="N5").find_parent("section")
+    assert [
+        item.find(class_="vocabulary-expression").get_text()
+        for item in n5_section.find_all("li")
+    ] == ["犬", "猫"]
 
 
 def test_dictionary_omits_non_vocabulary_tokens() -> None:
@@ -312,10 +383,10 @@ def test_dictionary_omits_non_vocabulary_tokens() -> None:
 
     parsed = BeautifulSoup(response.data, "html.parser")
     entries = [
-        item.get_text(" ", strip=True)
+        item.find(class_="vocabulary-expression").get_text()
         for item in parsed.find(id="unknown-dictionary").find_all("li")
     ]
-    assert entries == ["食べる × 1"]
+    assert entries == ["食べる"]
 
 
 def test_page_includes_local_assets_and_jlpt_legend() -> None:
