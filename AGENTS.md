@@ -141,7 +141,9 @@ Cues preserve raw definition whitespace and the Anki `rt.known` CSS contract.
 1. `card_processor.py` should remain pure logic (no IO). Keep new utilities there deterministic for testing ease.
 2. `render.py` owns Rich-specific presentation logic; avoid bringing Rich into business logic modules.
 3. `utils.py` is small; add generic helpers that have no external dependencies there. If a helper is domain-specific, place it in the relevant module instead.
-4. Keep `cli.py` as the only infinite loop / orchestrator. New commands or modes should still leverage helper modules for heavy lifting.
+4. `cli.py` owns the command loop, commit review state and activity spinner. `vocab_commit.py` orchestrates already-included rows using Anki access from `anki/connect.py` and existing provider/render modules. `anki/vocab_notes.py` constructs current V3 payloads without I/O; compatibility with existing legacy/V2 notes stays in the adapter/setup code. Keep provider validation, retries and concurrency in `enrichment.py`; leave the legacy add helpers unchanged.
+5. Commit tests follow ownership: `tests/test_vocab_commit.py` mocks service boundaries, `tests/test_vocab_notes.py` checks payloads, and `tests/test_anki_connect.py` checks Anki access and legacy behavior.
+6. Use `config.get_config()` for the shared lazy configuration; `config.load_config()` explicitly reads fresh settings. Application workflows should not obtain configuration through the Anki adapter.
 
 ---
 

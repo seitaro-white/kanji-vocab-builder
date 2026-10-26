@@ -1,13 +1,14 @@
 """Tests for configuration management."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from kanji_vocab_miner import config as config_module
+from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.config import (
-    AppConfig,
     FIELDS,
     LEGACY_FIELDS,
     LEGACY_VOCAB_NOTE_TYPE,
@@ -18,11 +19,42 @@ from kanji_vocab_miner.config import (
     VOCAB_TAG,
     VOCAB_V2_FIELDS,
     VOCAB_V3_FIELDS,
+    AppConfig,
     get_llm_api_key,
     load_config,
     provision_default_prompt,
     resolve_prompt_path,
 )
+
+
+def test_get_config_loads_lazily_and_shares_one_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = AppConfig(ankiconnect={"url": "http://anki.test:8765"})
+    loader = Mock(return_value=settings)
+    monkeypatch.setattr(config_module, "_config", None, raising=False)
+    monkeypatch.setattr(config_module, "load_config", loader)
+
+    loader.assert_not_called()
+    assert config_module.get_config() is settings
+    assert config_module.get_config() is settings
+    assert connect.get_anki_url() == "http://anki.test:8765"
+    loader.assert_called_once_with()
+
+
+def test_get_config_does_not_cache_a_loading_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = AppConfig()
+    loader = Mock(side_effect=[RuntimeError("invalid config"), settings])
+    monkeypatch.setattr(config_module, "_config", None, raising=False)
+    monkeypatch.setattr(config_module, "load_config", loader)
+
+    with pytest.raises(RuntimeError, match="invalid config"):
+        config_module.get_config()
+    assert config_module.get_config() is settings
+    assert config_module.get_config() is settings
+    assert loader.call_count == 2
 
 
 def test_load_config_defaults():

@@ -243,12 +243,14 @@ including recognition-only notes. Definitions prefer デジタル大辞泉 and f
 back to 精選版 日本国語大辞典. Results are not cached. The normalized text,
 rendered cue, source name, and canonical source URL are stored on the note.
 DeepSeek generation runs concurrently, while successful notes are written to
-Anki sequentially in the reviewed order.
+Anki sequentially in the reviewed order. The CLI shows one **Pushing to Anki…**
+activity spinner throughout the batch, then reports the added, already-existing,
+and failed counts; it does not show percentages or changing phase labels.
 
 Each word gets at most three DeepSeek attempts, with short exponential backoff
-and validation feedback after an invalid response. If definition, furigana,
-enrichment, or Anki writing fails, that word is skipped while other successful
-rows can still be committed. Failed rows remain pending in reviewed order with
+and validation feedback after an invalid response. If definition lookup, furigana
+rendering, enrichment, note serialization, or Anki writing fails, that word is
+skipped while other successful rows can still be committed. Failed rows remain pending in reviewed order with
 their Recall choice for retry. If the API key is missing, all eligible
 nonduplicate rows fail clearly at enrichment and remain pending; the tool never
 falls back to creating V2 or unenriched V3 notes.

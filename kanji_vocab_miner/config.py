@@ -1,11 +1,11 @@
 """Configuration management for kanji-vocab-miner."""
 
-from importlib import resources
 import os
+import tomllib
+from importlib import resources
 from pathlib import Path
 from typing import Optional, Union
 
-import tomllib
 from dotenv import dotenv_values
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -164,3 +164,17 @@ def load_config() -> AppConfig:
         return AppConfig(**toml_data)
 
     return AppConfig()  # Use defaults + env vars
+
+
+_config: AppConfig | None = None
+
+
+def get_config() -> AppConfig:
+    """Return one lazily loaded configuration shared by application consumers.
+
+    Use load_config() when a fresh read is explicitly needed instead.
+    """
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config

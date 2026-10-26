@@ -1,20 +1,21 @@
 """Tests for CLI commands that don't require a live Anki."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
+from typing import Literal
 
 import pytest
 from click.testing import CliRunner
 
 from kanji_vocab_miner import cli, setup
-from kanji_vocab_miner.jisho import KanjiSummary
+from kanji_vocab_miner.jisho import JishoWord, KanjiSummary
 from kanji_vocab_miner.jlpt import LevelWord
-from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.progress import ManualProgressCounts
 from kanji_vocab_miner.review import ReviewResult
 from kanji_vocab_miner.vocab_models import (
     AddFailure,
     BatchAddResult,
-    CommitProgressEvent,
     PendingVocabItem,
 )
 
@@ -246,7 +247,7 @@ def test_failed_lookup_disables_a(monkeypatch):
 
 
 def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, capsys):
-    """Commit messaging is derived from structured connector outcomes."""
+    """Commit messaging is derived from structured workflow outcomes."""
     added = PendingVocabItem(word=_word("学校", "がっこう"))
     duplicate = PendingVocabItem(word=_word("大学", "だいがく"))
     monkeypatch.setattr(
@@ -274,49 +275,49 @@ def test_handle_review_and_commit_reports_actual_outcome_counts(monkeypatch, cap
     assert "failed 0" in output
 
 
-def test_add_pending_words_shows_completion_with_terminal_counts(monkeypatch):
+@pytest.mark.parametrize("should_fail", [False, True])
+def test_add_pending_words_uses_one_spinner_until_commit_finishes(
+    monkeypatch: pytest.MonkeyPatch, should_fail: bool
+) -> None:
     items = [
         PendingVocabItem(word=_word("学校", "がっこう")),
         PendingVocabItem(word=_word("大学", "だいがく")),
     ]
-    def fake_add(pending, on_progress):
-        on_progress(
-            CommitProgressEvent(
-                phase="duplicate",
-                completed=1,
-                total=2,
-                item=pending[0],
-                outcome="duplicate",
-            )
-        )
-        on_progress(
-            CommitProgressEvent(
-                phase="anki",
-                completed=2,
-                total=2,
-                item=pending[1],
-                outcome="added",
-            )
-        )
-        return BatchAddResult(
-            added=[pending[1]], skipped_duplicates=[pending[0]]
-        )
+    status_events = []
+    expected = BatchAddResult(added=[items[1]], skipped_duplicates=[items[0]])
 
-    monkeypatch.setattr(cli.ankiconnect, "add_vocab_items", fake_add)
+    @contextmanager
+    def fake_status(message: str, *, spinner: str) -> Iterator[None]:
+        status_events.append((message, spinner))
+        try:
+            yield
+        finally:
+            status_events.append("stopped")
 
-    with cli.console.capture() as capture:
-        result = cli.add_pending_words_to_anki(items)
+    def fake_add(pending: list[PendingVocabItem]) -> BatchAddResult:
+        assert pending is items
+        assert status_events == [("Pushing to Anki…", "dots")]
+        if should_fail:
+            raise RuntimeError("Anki unavailable")
+        return expected
 
-    assert result.added == [items[1]]
-    assert result.skipped_duplicates == [items[0]]
-    output = capture.get()
-    assert output.count("Vocabulary commit complete.") == 1
-    assert "2/2" in output
+    monkeypatch.setattr(cli.console, "status", fake_status)
+    monkeypatch.setattr(cli.vocab_commit, "add_vocab_items", fake_add)
+
+    if should_fail:
+        with pytest.raises(RuntimeError, match="Anki unavailable"):
+            cli.add_pending_words_to_anki(items)
+    else:
+        assert cli.add_pending_words_to_anki(items) is expected
+    assert status_events == [("Pushing to Anki…", "dots"), "stopped"]
 
 
-def test_enrichment_failures_are_reported_and_retained_in_reviewed_order(
-    monkeypatch, capsys
-):
+@pytest.mark.parametrize("failure_stage", ["enrichment", "serialization"])
+def test_commit_failures_are_reported_and_retained_in_reviewed_order(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure_stage: Literal["enrichment", "serialization"],
+) -> None:
     first = PendingVocabItem(word=_word("最初"), recall_enabled=True)
     second = PendingVocabItem(word=_word("次"))
     monkeypatch.setattr(
@@ -329,7 +330,7 @@ def test_enrichment_failures_are_reported_and_retained_in_reviewed_order(
         "add_pending_words_to_anki",
         lambda items: BatchAddResult(
             failed=[
-                AddFailure(first, "enrichment", "provider rejected output"),
+                AddFailure(first, failure_stage, "preparation failed"),
                 AddFailure(second, "anki", "Anki unavailable"),
             ]
         ),
@@ -342,7 +343,7 @@ def test_enrichment_failures_are_reported_and_retained_in_reviewed_order(
     output = capsys.readouterr().out
     assert pending == [first, second]
     assert pending[0].recall_enabled is True
-    assert pending[0].last_error == "provider rejected output"
-    assert "最初: enrichment failed" in output
+    assert pending[0].last_error == "preparation failed"
+    assert f"最初: {failure_stage} failed" in output
     assert "Added 0; already existed 0; failed 2." in output
     assert continue_loop is True

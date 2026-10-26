@@ -1,8 +1,5 @@
-from dataclasses import dataclass
-from datetime import date, datetime
-from html import escape
-import json
 import re
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -10,53 +7,16 @@ from tqdm import tqdm
 
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.config import (
-    AppConfig,
     FIELDS,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
-    VOCAB_NOTE_TYPE_V2,
-    VOCAB_NOTE_TYPE_V3,
     VOCAB_TAG,
-    VOCAB_V2_FIELDS,
-    VOCAB_V3_FIELDS,
-    get_llm_api_key,
-    load_config,
-    resolve_prompt_path,
+    get_config,
 )
-from kanji_vocab_miner.enrichment import (
-    DeepSeekEnrichmentClient,
-    VocabEnrichment,
-    generate_enrichments,
-    render_example,
-)
-from kanji_vocab_miner.furigana import (
-    render_japanese_cue,
-    update_furigana_visibility,
-)
+from kanji_vocab_miner.furigana import update_furigana_visibility
 from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
-from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.utils import is_kanji
-from kanji_vocab_miner.vocab_models import (
-    AddFailure,
-    BatchAddResult,
-    CommitPhase,
-    CommitProgressCallback,
-    CommitProgressEvent,
-    CommitTerminalOutcome,
-    PendingVocabItem,
-)
-
-# Lazy-loaded configuration
-_config = None
-
-
-def get_config():
-    """Get or load the application configuration."""
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
 
 
 def get_anki_url() -> str:
@@ -284,268 +244,6 @@ def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
     }
 
 
-def prepare_note_v2(
-    item: PendingVocabItem,
-    japanese_definition: JapaneseDefinition,
-    front: str,
-    japanese_cue: str,
-) -> Dict[str, Any]:
-    """Serialize fetched and rendered vocabulary data into a V2 Anki note.
-
-    Args:
-        item: Pending word with its recall preference.
-        japanese_definition: Normalized definition and Kotobank provenance.
-        front: Pre-rendered target word with review-dependent furigana.
-        japanese_cue: Pre-rendered Japanese definition cue.
-
-    Returns:
-        A deterministic thirteen-field AnkiConnect note payload without a deck.
-    """
-    word = item.word
-    fields = VOCAB_V2_FIELDS
-    return {
-        "modelName": VOCAB_NOTE_TYPE_V2,
-        "fields": {
-            fields["front"]: front,
-            fields["back"]: word.definitions[0],
-            fields["expression"]: word.expression,
-            fields["kana_reading"]: word.kana,
-            fields["grammar"]: (
-                word.parts_of_speech[0] if word.parts_of_speech else ""
-            ),
-            fields["definition"]: word.definitions[0],
-            fields["additional_definitions"]: "\n".join(word.definitions[1:]),
-            fields["jlpt"]: f"JLPT N{word.jlpt}" if word.jlpt else "",
-            fields["japanese_definition"]: "\n".join(japanese_definition.senses),
-            fields["japanese_cue"]: japanese_cue,
-            fields["recall"]: "1" if item.recall_enabled else "",
-            fields["definition_source"]: japanese_definition.source_name,
-            fields["definition_url"]: japanese_definition.source_url,
-        },
-        "tags": [VOCAB_TAG],
-        "options": {"allowDuplicate": False},
-    }
-
-
-def _render_plain_text(value: str) -> str:
-    """Escape model-generated plain text and preserve line breaks safely."""
-    return escape(value).replace("\n", "<br>")
-
-
-def prepare_note_v3(
-    item: PendingVocabItem,
-    japanese_definition: JapaneseDefinition,
-    front: str,
-    japanese_cue: str,
-    enrichment: VocabEnrichment,
-) -> Dict[str, Any]:
-    """Serialize prepared V2 data and validated enrichment into a V3 note."""
-    note = prepare_note_v2(item, japanese_definition, front, japanese_cue)
-    note["modelName"] = VOCAB_NOTE_TYPE_V3
-    note["fields"] = {
-        **note["fields"],
-        VOCAB_V3_FIELDS["nuance"]: _render_plain_text(enrichment.nuance),
-        VOCAB_V3_FIELDS["example"]: render_example(enrichment).replace(
-            "\n", "<br>"
-        ),
-        VOCAB_V3_FIELDS["kanji_explanation"]: _render_plain_text(
-            enrichment.kanji_explanation
-        ),
-    }
-    return note
-
-
-@dataclass(frozen=True)
-class _PreparedVocabItem:
-    """Carry one reviewed row and its deterministic pre-enrichment data."""
-
-    index: int
-    item: PendingVocabItem
-    definition: JapaneseDefinition
-    front: str
-    japanese_cue: str
-
-
-def add_vocab_items(
-    items: List[PendingVocabItem],
-    client: Optional[KotobankClient] = None,
-    enrichment_client: Optional[DeepSeekEnrichmentClient] = None,
-    on_progress: Optional[CommitProgressCallback] = None,
-    config: Optional[AppConfig] = None,
-) -> BatchAddResult:
-    """Commit included vocabulary through ordered preparation and write phases.
-
-    Duplicate classification and deterministic dictionary/furigana preparation
-    happen before bounded concurrent enrichment. Successful V3 notes are then
-    serialized and written to Anki sequentially in the original reviewed order.
-
-    A supplied enrichment client is treated as the provider dependency (and is
-    useful for isolated tests). Otherwise the environment-only API key and the
-    configured prompt path are used to construct the production client.
-    """
-    total = len(items)
-    completed = 0
-    added: List[Tuple[int, PendingVocabItem]] = []
-    duplicates: List[Tuple[int, PendingVocabItem]] = []
-    failures: List[Tuple[int, AddFailure]] = []
-
-    def emit_progress(
-        phase: CommitPhase,
-        item: Optional[PendingVocabItem] = None,
-        outcome: Optional[CommitTerminalOutcome] = None,
-    ) -> None:
-        nonlocal completed
-        if outcome is not None:
-            completed += 1
-        if on_progress is not None:
-            on_progress(
-                CommitProgressEvent(
-                    phase=phase,
-                    completed=completed,
-                    total=total,
-                    item=item,
-                    outcome=outcome,
-                )
-            )
-
-    def build_result() -> BatchAddResult:
-        return BatchAddResult(
-            added=[item for _, item in sorted(added)],
-            failed=[failure for _, failure in sorted(failures)],
-            skipped_duplicates=[item for _, item in sorted(duplicates)],
-        )
-
-    emit_progress("duplicate")
-    existing_expressions = get_vocab_expressions()
-    eligible: List[Tuple[int, PendingVocabItem]] = []
-    for index, item in enumerate(items):
-        if item.word.expression in existing_expressions:
-            duplicates.append((index, item))
-            emit_progress("duplicate", item, "duplicate")
-        else:
-            eligible.append((index, item))
-
-    if not eligible:
-        return build_result()
-
-    app_config = config or get_config()
-    if enrichment_client is None:
-        api_key = get_llm_api_key()
-        if api_key is None:
-            message = (
-                "Missing KANJI_VOCAB_MINER_LLM__API_KEY; set it before "
-                "committing vocabulary."
-            )
-            for index, item in eligible:
-                failures.append(
-                    (index, AddFailure(item, "enrichment", message))
-                )
-                emit_progress("enrichment", item, "failed")
-            return build_result()
-        enrichment_client = DeepSeekEnrichmentClient(
-            api_key=api_key,
-            prompt_path=resolve_prompt_path(app_config.llm.prompt_path),
-        )
-
-    reviewed_kanji = get_reviewed_kanji()
-    kotobank_client = client or KotobankClient()
-    prepared_items: List[_PreparedVocabItem] = []
-    for index, item in eligible:
-        expression = item.word.expression
-        emit_progress("definition", item)
-        try:
-            definition = kotobank_client.lookup(expression)
-        except Exception as error:
-            failures.append(
-                (index, AddFailure(item, "definition", str(error)))
-            )
-            emit_progress("definition", item, "failed")
-            continue
-
-        emit_progress("furigana", item)
-        try:
-            front = fetch_jisho_word_furigana(expression, reviewed_kanji)
-            japanese_cue = render_japanese_cue(
-                definition.senses, reviewed_kanji
-            )
-        except Exception as error:
-            failures.append((index, AddFailure(item, "furigana", str(error))))
-            emit_progress("furigana", item, "failed")
-            continue
-
-        prepared_items.append(
-            _PreparedVocabItem(
-                index=index,
-                item=item,
-                definition=definition,
-                front=front,
-                japanese_cue=japanese_cue,
-            )
-        )
-
-    if not prepared_items:
-        return build_result()
-
-    emit_progress("enrichment")
-    enrichment_outcomes = generate_enrichments(
-        [prepared.item for prepared in prepared_items],
-        enrichment_client,
-        max_workers=app_config.llm.concurrency,
-        on_complete=lambda item: emit_progress("enrichment", item),
-    )
-
-    enriched_items: List[Tuple[_PreparedVocabItem, VocabEnrichment]] = []
-    for prepared, outcome in zip(prepared_items, enrichment_outcomes):
-        if outcome.enrichment is None:
-            message = str(outcome.error or "Unknown enrichment failure")
-            failures.append(
-                (
-                    prepared.index,
-                    AddFailure(prepared.item, "enrichment", message),
-                )
-            )
-            emit_progress("enrichment", prepared.item, "failed")
-        else:
-            enriched_items.append((prepared, outcome.enrichment))
-
-    for prepared, enrichment in enriched_items:
-        emit_progress("furigana", prepared.item)
-        try:
-            note = prepare_note_v3(
-                prepared.item,
-                prepared.definition,
-                prepared.front,
-                prepared.japanese_cue,
-                enrichment,
-            )
-        except Exception as error:
-            failures.append(
-                (
-                    prepared.index,
-                    AddFailure(prepared.item, "furigana", str(error)),
-                )
-            )
-            emit_progress("furigana", prepared.item, "failed")
-            continue
-
-        emit_progress("anki", prepared.item)
-        try:
-            send_request(
-                "addNote", note=note | {"deckName": VOCAB_DECK_NAME}
-            )
-        except Exception as error:
-            failures.append(
-                (prepared.index, AddFailure(prepared.item, "anki", str(error)))
-            )
-            emit_progress("anki", prepared.item, "failed")
-            continue
-
-        added.append((prepared.index, prepared.item))
-        emit_progress("anki", prepared.item, "added")
-
-    return build_result()
-
-
 def add_vocab_note_to_deck(
     selected_words: List[JishoWord], deckname: str = None, reviewed_kanji: Set[str] = None
 ) -> None:
@@ -680,10 +378,10 @@ def count_vocab_notes_added_since(start_date: date) -> int:
 
 
 def get_vocab_expressions() -> Set[str]:
-    """Read unique vocabulary identities at note level across both models.
+    """Read unique vocabulary identities across legacy, V2 and V3 notes.
 
-    Notes without a usable Expression field are ignored, allowing legacy and
-    V2 notes to coexist with unrelated or malformed historical deck content.
+    Notes without a usable Expression field are ignored, allowing vocabulary
+    notes to coexist with unrelated or malformed historical deck content.
 
     Returns:
         The deduplicated nonblank Expression values in the vocabulary deck.
@@ -717,7 +415,7 @@ def get_reviewed_vocab() -> List[str]:
 def sync_vocab_furigana() -> int:
     """Update review-dependent furigana once per vocabulary note.
 
-    Front is updated for compatible legacy and V2 notes. JapaneseCue is also
+    Front is updated for compatible legacy, V2 and V3 notes. JapaneseCue is also
     updated when present, while JapaneseDefinition remains unchanged. All
     changed fields for one note are sent in a single AnkiConnect update.
 
