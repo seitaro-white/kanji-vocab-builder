@@ -67,6 +67,122 @@ def test_search_returns_matching_words_with_at_most_three_senses() -> None:
     ]
 
 
+def test_search_finds_kanji_spelling_after_kana_only_form() -> None:
+    """Keep 眼鏡 even when Jisho lists メガネ as the first form."""
+    response = MagicMock()
+    response.json.return_value = {
+        "data": [
+            {
+                "japanese": [
+                    {"reading": "メガネ"},
+                    {"word": "眼鏡", "reading": "めがね"},
+                ],
+                "jlpt": ["jlpt-n5"],
+                "senses": [
+                    {
+                        "english_definitions": ["glasses", "spectacles"],
+                        "parts_of_speech": ["Noun"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        words = jisho.search_words_containing_kanji("眼")
+
+    assert words == [
+        jisho.JishoWord(
+            expression="眼鏡",
+            kana="めがね",
+            jlpt=5,
+            definitions=["glasses; spectacles"],
+            parts_of_speech=["Noun"],
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "kanji, forms, expected",
+    [
+        pytest.param(
+            "飲",
+            [
+                {"word": "湯のみ", "reading": "ゆのみ"},
+                {"word": "湯飲み", "reading": "ゆのみ"},
+            ],
+            ("湯飲み", "ゆのみ"),
+            id="alternate-kanji-spelling",
+        ),
+        pytest.param(
+            "眼",
+            [
+                {"reading": "メグスリ"},
+                {"word": "目薬", "reading": "めぐすり"},
+                {"word": "眼薬", "reading": "がんやく"},
+            ],
+            ("眼薬", "がんやく"),
+            id="later-match-keeps-its-own-reading",
+        ),
+        pytest.param(
+            "眼",
+            [
+                {"word": "眼差し", "reading": "まなざし"},
+                {"word": "眼指", "reading": "まなざし"},
+            ],
+            ("眼差し", "まなざし"),
+            id="preserve-first-matching-form",
+        ),
+        pytest.param(
+            "眼",
+            [
+                {"word": "目やに", "reading": "めやに"},
+                {"word": "眼脂", "reading": "めやに"},
+                {"word": "眼脂", "reading": "がんし"},
+            ],
+            ("眼脂", "めやに"),
+            id="one-result-for-multiple-later-matches",
+        ),
+    ],
+)
+def test_search_selects_first_matching_form_per_entry(
+    kanji: str, forms: list[dict[str, str]], expected: tuple[str, str]
+) -> None:
+    response = MagicMock()
+    response.json.return_value = {"data": [{"japanese": forms}]}
+
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        words = jisho.search_words_containing_kanji(kanji)
+
+    assert [(word.expression, word.kana) for word in words] == [expected]
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {},
+        {"japanese": []},
+        {"japanese": [{"reading": "メガネ"}]},
+        {
+            "slug": "眼鏡",
+            "japanese": [
+                {"word": "目", "reading": "め"},
+                {"word": "芽", "reading": "め"},
+            ],
+        },
+    ],
+    ids=["missing-forms", "empty-forms", "kana-only", "no-matching-spelling"],
+)
+def test_search_skips_entries_without_matching_forms(item: dict[str, object]) -> None:
+    response = MagicMock()
+    response.json.return_value = {"data": [item]}
+
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        words = jisho.search_words_containing_kanji("眼")
+
+    assert words == []
+
+
 @pytest.mark.parametrize(
     "characters, furigana, reviewed_kanji, expected",
     [
