@@ -151,7 +151,7 @@ def test_success_replaces_editor_with_controls_and_start_over() -> None:
 
     assert response.status_code == 200
     assert b'<textarea name="text"' not in response.data
-    assert b"Unknown kanji only" in response.data
+    assert b"Study furigana" in response.data
     assert b"All furigana" in response.data
     assert b"No furigana" in response.data
     assert b"Start Over" in response.data

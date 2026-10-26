@@ -92,9 +92,16 @@ Paste up to 50,000 characters of plain Japanese text. The limit is checked on
 submission rather than silently truncating pasted text. The result colours
 unknown words using the bundled, unofficial JLPT N5–N1 vocabulary data; a
 **Highlight known words** toggle can extend those colours to known vocabulary.
-You can show furigana for **unknown kanji only**, for every word, or for no words.
-Furigana uses a separate known-kanji inventory, not vocabulary membership. A grouped
-reading stays visible until all kanji represented by that group are known.
+Choose **Study furigana** (default), **All furigana**, or **No furigana**.
+Study mode uses a **Target JLPT level** dropdown (N5–N1, default N2). For unknown
+vocabulary harder than the target (e.g. N1 at an N2 target), or absent from the
+JLPT lists, readings stay visible even when all its kanji are known. For known
+vocabulary, and unknown vocabulary at or easier than the target, a reading hides
+only when all kanji represented by that ruby group are known. Known vocabulary
+with unknown kanji still gets furigana. Names and non-vocabulary tokens retain
+the kanji-only rule. Missing readings are never guessed.
+The kanji inventory is separate from vocabulary membership. All/No furigana
+override study mode regardless of target level.
 Runs of blank lines are reduced to one blank line between paragraphs. Below
 the article, an unknown-vocabulary list groups dictionary forms from N5 through
 N1, followed by unlisted words. Entries show their article frequency and are
@@ -102,7 +109,9 @@ sorted by descending frequency within each level; ties retain first-appearance
 order. The responsive vocabulary grid shows each level's distinct-word count and
 compact frequency badges. Highlighted words have subtle inline outlines, while
 known words stay visually quiet until highlighting is enabled. The grouped furigana
-controls and separate highlighting toggle work without reprocessing the article.
+controls, target-level dropdown and separate highlighting toggle work without
+reprocessing the article. The target level is not persisted; new articles default
+to N2.
 **Start Over** returns to an empty editor (or the sample text in the explicit demo).
 
 A token is treated as known when its normalized dictionary identity matches an

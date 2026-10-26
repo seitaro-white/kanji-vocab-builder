@@ -24,12 +24,19 @@
       <section class="reader-controls" aria-label="Reader display options">
         <fieldset class="furigana-controls">
           <legend class="visually-hidden">Furigana display mode</legend>
-          <button type="button" data-furigana-mode="unknown" aria-pressed="true">Unknown kanji only</button>
+          <button type="button" data-furigana-mode="unknown" aria-pressed="true">Study furigana</button>
           <button type="button" data-furigana-mode="all" aria-pressed="false">All furigana</button>
           <button type="button" data-furigana-mode="none" aria-pressed="false">No furigana</button>
         </fieldset>
+        <label for="target-level">Target JLPT level</label>
+        <select id="target-level" aria-describedby="furigana-help">
+          {% for level in [5, 4, 3, 2, 1] %}
+            <option value="{{ level }}"{% if level == 2 %} selected{% endif %}>N{{ level }}</option>
+          {% endfor %}
+        </select>
         <button type="button" data-jlpt-toggle aria-pressed="false">Highlight known words</button>
       </section>
+      <p id="furigana-help" class="section-description">Study furigana hides readings for known kanji, except in unknown words harder than your target level or unlisted words. Known vocabulary always uses the known-kanji rule.</p>
       <aside class="legend" aria-label="JLPT colour legend">
         <span class="jlpt-n5">N5</span>
         <span class="jlpt-n4">N4</span>
@@ -38,7 +45,7 @@
         <span class="jlpt-n1">N1</span>
         <span class="name name-legend" title="Parser-recognized person or place">Person / place name</span>
       </aside>
-      <article class="article furigana-mode-unknown jlpt-highlight-unknown" lang="ja">{{ article_html }}</article>
+      <article class="article furigana-mode-unknown jlpt-highlight-unknown" data-target-level="2" lang="ja">{{ article_html }}</article>
       {% if unknown_vocabulary_groups %}
         <section id="unknown-dictionary" class="unknown-dictionary" aria-labelledby="unknown-dictionary-heading">
           <h2 id="unknown-dictionary-heading">Unknown vocabulary</h2>

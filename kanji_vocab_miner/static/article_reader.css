@@ -82,6 +82,7 @@ textarea {
 }
 
 button,
+select,
 .start-over {
   display: inline-block;
   box-sizing: border-box;
@@ -101,6 +102,7 @@ button:hover,
 .start-over:hover { background: #edf3f7; }
 
 button:focus-visible,
+select:focus-visible,
 .start-over:focus-visible,
 textarea:focus-visible {
   outline: 3px solid var(--focus);
@@ -209,6 +211,17 @@ textarea:focus-visible {
 
 .furigana-mode-unknown rt.known-kanji,
 .furigana-mode-none rt { display: none; }
+
+/* Unknown harder/unlisted vocabulary keeps readings even for known kanji.
+   Numerically smaller JLPT levels are harder; 0 denotes unlisted vocabulary.
+   Scope to study mode so All / No furigana remain unconditional overrides. */
+.furigana-mode-unknown [data-reading-level="0"] rt.known-kanji,
+.furigana-mode-unknown[data-target-level="5"] :is([data-reading-level="1"], [data-reading-level="2"], [data-reading-level="3"], [data-reading-level="4"]) rt.known-kanji,
+.furigana-mode-unknown[data-target-level="4"] :is([data-reading-level="1"], [data-reading-level="2"], [data-reading-level="3"]) rt.known-kanji,
+.furigana-mode-unknown[data-target-level="3"] :is([data-reading-level="1"], [data-reading-level="2"]) rt.known-kanji,
+.furigana-mode-unknown[data-target-level="2"] [data-reading-level="1"] rt.known-kanji {
+  display: ruby-text;
+}
 
 .name {
   /* A base-text border does not propagate into ruby annotations. */

@@ -71,6 +71,10 @@ def _render_group_html(
     classes = ["token", "known" if token.is_known else "unknown"]
     if token.is_vocabulary and token.jlpt_level is not None:
         classes.append(f"jlpt-n{token.jlpt_level}")
+    # Reader-only metadata: 0 means unlisted, not an easier JLPT level.
+    reading_level = ""
+    if token.is_vocabulary and not token.is_known:
+        reading_level = f' data-reading-level="{token.jlpt_level or 0}"'
     title = ""
     if token.name_kind:
         classes.extend(["name", f"name-{token.name_kind}"])
@@ -82,7 +86,7 @@ def _render_group_html(
         )
         for member in group
     )
-    return f'<span class="{" ".join(classes)}"{title}>{content}</span>'
+    return f'<span class="{" ".join(classes)}"{title}{reading_level}>{content}</span>'
 
 
 def render_article_html(
