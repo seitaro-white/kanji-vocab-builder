@@ -142,7 +142,7 @@ def test_known_and_unknown_tokens_receive_semantic_classes() -> None:
     rendered = render_article_html(analyze_article("猫 犬", {"猫"}))
 
     assert '<span class="token known jlpt-n5"><ruby>猫' in rendered
-    assert '<span class="token unknown jlpt-n5"><ruby>犬' in rendered
+    assert '<span class="token unknown jlpt-n5" data-reading-level="5"><ruby>犬' in rendered
 
 
 def test_vocabulary_summary_filters_then_counts_dictionary_forms_by_level() -> None:
@@ -231,6 +231,7 @@ def test_furigana_uses_kanji_knowledge_independently_of_vocabulary() -> None:
     assert render_article_html(analyze_article("学生", {"学生"}), set("学生")) == (
         render_article_html(analyze_article("学生", set()), set("学生"))
         .replace('token unknown', 'token known')
+        .replace(' data-reading-level="5"', '')
     )
 
 
@@ -289,7 +290,7 @@ def test_missing_reading_preserves_surface_without_ruby() -> None:
     token = ArticleToken("未知", "", None, ("未知",), False, None)
 
     assert render_article_html([token]) == (
-        '<span class="token unknown">未知</span>'
+        '<span class="token unknown" data-reading-level="0">未知</span>'
     )
 
 

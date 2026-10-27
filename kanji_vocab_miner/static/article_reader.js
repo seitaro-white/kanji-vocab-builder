@@ -6,6 +6,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const jlptToggle = document.querySelector("[data-jlpt-toggle]");
   if (!article) return;
 
+  const targetLevel = document.querySelector("#target-level");
+  const updateTargetLevel = () => {
+    if (targetLevel && /^[1-5]$/.test(targetLevel.value)) {
+      article.dataset.targetLevel = targetLevel.value;
+    }
+  };
+  targetLevel?.addEventListener("change", updateTargetLevel);
+  updateTargetLevel();
+
   controls.forEach((control) => {
     control.addEventListener("click", () => {
       const mode = control.dataset.furiganaMode;
