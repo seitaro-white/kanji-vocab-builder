@@ -248,12 +248,14 @@ including recognition-only notes. Definitions prefer デジタル大辞泉 and f
 back to 精選版 日本国語大辞典. Results are not cached. The normalized text,
 rendered cue, source name, and canonical source URL are stored on the note.
 DeepSeek generation runs concurrently, while successful notes are written to
-Anki sequentially in the reviewed order.
+Anki sequentially in the reviewed order. The CLI shows one **Pushing to Anki…**
+activity spinner throughout the batch, then reports the added, already-existing,
+and failed counts; it does not show percentages or changing phase labels.
 
 Each word gets at most three DeepSeek attempts, with short exponential backoff
-and validation feedback after an invalid response. If definition, furigana,
-enrichment, or Anki writing fails, that word is skipped while other successful
-rows can still be committed. Failed rows remain pending in reviewed order with
+and validation feedback after an invalid response. If definition lookup, furigana
+rendering, enrichment, note serialization, or Anki writing fails, that word is
+skipped while other successful rows can still be committed. Failed rows remain pending in reviewed order with
 their Recall choice for retry. If the API key is missing, all eligible
 nonduplicate rows fail clearly at enrichment and remain pending; the tool never
 falls back to creating V2 or unenriched V3 notes.
@@ -352,6 +354,41 @@ All nine `_total` keys are required.
 
 For the October 2026 API regressions, a manual new-card queue workaround, and a
 reversible rollback checklist, see [the AnkiConnect recovery note](docs/anki-connect-rollback.md).
+
+## Anki implementation boundaries
+
+Within `kanji_vocab_miner/anki/`, `connect.py` owns HTTP and collection access;
+its supported legacy add helpers remain unchanged. `note_types.py` owns stable
+legacy/V2/V3 field order, model names, templates and CSS. `model_setup.py` creates
+models or refreshes only templates/CSS after validating exact field order;
+`setup.py` at package level retains wizard and prerequisite presentation.
+`furigana_sync.py` migrates stored furigana and updates `Front`/`JapaneseCue`
+together by note ID across compatible models, leaving definitions untouched.
+`vocab_notes.py` remains the pure current V3 payload builder; application commit
+orchestration stays in `vocab_commit.py`.
+
+Internal model definitions use immutable `NoteTypeDefinition` and `CardTemplate`
+dataclasses rather than Anki-shaped dictionaries. Stored-note maintenance reads
+`VocabNoteFurigana`; each editable fragment produces a `FuriganaChange` with named
+HTML and change-status attributes. Serialization remains at the service edge:
+
+```text
+NoteTypeDefinition + CardTemplate -> model_setup -> AnkiConnect model payload
+notesInfo record -> VocabNoteFurigana -> FuriganaChange -> updateNote field mapping
+```
+
+Google-style docstrings describe attributes, parameters, return values and
+relevant failures. Existing validated Pydantic models are retained; simple
+strings and genuine field-name mappings are not wrapped just for uniformity.
+Legacy add helpers retain their executable behavior; their annotations and
+docstrings describe optional inputs and per-word failure handling.
+
+Inventory policies are unchanged: reader loads are strict, while reviewed-kanji
+CLI loads are best-effort and include `flag:1` cards as well as non-new cards.
+Furigana maintenance retains that best-effort policy: a failed reviewed-kanji
+load is treated as empty knowledge, which can reveal previously hidden ruby.
+HTTP timeout policy and this maintenance failure policy are separate follow-ups,
+not behavior changes in the boundary refactor.
 
 ## Tests
 

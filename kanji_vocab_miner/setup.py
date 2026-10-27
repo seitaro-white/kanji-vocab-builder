@@ -1,14 +1,10 @@
 """Setup wizard for initializing Anki decks and note types."""
 
-from typing import Tuple, List
+from typing import List, Tuple
 
-from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.anki import connect, model_setup
+from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE_V3
 from kanji_vocab_miner.config import (
-    VOCAB_DECK_NAME,
-    VOCAB_NOTE_TYPE_V2,
-    VOCAB_NOTE_TYPE_V3,
-    VOCAB_V2_FIELDS,
-    VOCAB_V3_FIELDS,
     load_config,
     provision_default_prompt,
 )
@@ -16,16 +12,14 @@ from kanji_vocab_miner.render import console
 
 
 def validate_prerequisites() -> Tuple[bool, List[str]]:
-    """Validate all prerequisites for running kanji-vocab-miner.
+    """Check connectivity, required decks and the current V3 note type.
 
-    Checks:
-    1. AnkiConnect connectivity
-    2. Vocabulary deck exists
-    3. Note type exists
-    4. "All In One Kanji" deck exists
+    Settings are loaded fresh. Connectivity failure prevents later service
+    checks; deck and model failures otherwise accumulate actionable messages.
 
     Returns:
-        Tuple of (is_valid, error_messages)
+        A pair of (is_valid, error_messages). is_valid is True only when every
+        check succeeds; messages use Rich markup for presentation by the caller.
     """
     errors = []
     config = load_config()
@@ -34,7 +28,7 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
     # 1. Check AnkiConnect connectivity
     try:
         connect.send_request("version")
-    except Exception as e:
+    except Exception:
         errors.append(
             "[red]✗ Cannot connect to AnkiConnect[/red]\n"
             "  Please ensure:\n"
@@ -82,16 +76,17 @@ def validate_prerequisites() -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
-def run_setup():
-    """Create vocab deck and note type in Anki.
+def run_setup() -> bool:
+    """Run the setup wizard without modifying legacy or V2 vocabulary models.
 
-    This function:
-    1. Tests AnkiConnect connectivity
-    2. Creates the vocabulary deck (idempotent)
-    3. Creates the note type with required fields (idempotent)
+    Provision the enrichment prompt without overwriting existing content, create
+    the vocabulary deck if needed, and create or safely refresh V3. Reusable
+    model operations validate field order before refreshing templates and CSS.
+    All activity and failure messages are presented through the console.
 
     Returns:
-        bool: True if setup completed successfully, False otherwise
+        True when deck and V3 setup succeed, or False after a provisioning or
+        service failure. A missing kanji deck produces guidance, not failure.
     """
     console.print("[bold]Kanji Vocab Miner Setup[/bold]\n")
 
@@ -142,10 +137,10 @@ def run_setup():
     console.print(f"[cyan]Configuring note type: {VOCAB_NOTE_TYPE_V3}...[/cyan]")
     try:
         if VOCAB_NOTE_TYPE_V3 in model_names:
-            update_note_type_v3()
+            model_setup.update_note_type_v3()
             console.print("[green]✓[/green] V3 templates and CSS updated\n")
         else:
-            create_note_type_v3()
+            model_setup.create_note_type_v3()
             console.print(
                 f"[green]✓[/green] Note type '{VOCAB_NOTE_TYPE_V3}' created\n"
             )
@@ -177,224 +172,3 @@ def run_setup():
         )
 
     return True
-
-
-def _note_type_css() -> str:
-    return """
-.card {
-    font-family: ume-pms3, "Noto Sans CJK JP", sans-serif;
-    font-size: 22px;
-    text-align: center;
-    color: black;
-    background-color: #fcf7ef;
-}
-
-.japanese {
-    font-size: 2em;
-}
-
-.english {
-    font-size: 1.4em;
-    margin: 2% 2%;
-}
-
-.smallEnglish {
-    font-size: 0.6em;
-    margin: 2% 2%;
-}
-
-ruby {
-    ruby-align: center;
-}
-
-rt {
-    font-size: 0.5em;
-}
-
-rt.known {
-    display: none;
-}
-
-.show-all-furigana rt.known {
-    display: ruby-text;
-}
-"""
-
-
-def _v2_recognition_template() -> dict:
-    return {
-        "Name": "Recognition",
-        "Front": '<div class="japanese">{{Front}}</div>',
-        "Back": (
-            '<div class="show-all-furigana">{{FrontSide}}</div>\n\n'
-            "<hr id=answer>\n\n{{Back}}"
-        ),
-    }
-
-
-def _v2_note_type_css() -> str:
-    return _note_type_css() + """
-
-.japanese-cue {
-    font-size: 1.35em;
-    line-height: 1.6;
-}
-
-.sense + .sense {
-    margin-top: 0.75em;
-}
-
-.reading {
-    margin-top: 0.4em;
-}
-
-.definition-source {
-    font-size: 0.65em;
-    margin-top: 1.2em;
-}
-"""
-
-
-def _v2_recall_template() -> dict:
-    return {
-        "Name": "Recall",
-        "Front": (
-            '{{#Recall}}\n<div class="japanese-cue">'
-            "{{JapaneseCue}}</div>\n{{/Recall}}"
-        ),
-        "Back": (
-            '<div class="show-all-furigana japanese-cue">'
-            "{{JapaneseCue}}</div>\n\n<hr id=answer>\n\n"
-            '<div class="show-all-furigana japanese">{{Front}}</div>\n'
-            '<div class="reading">{{Kana Reading}}</div>\n'
-            '<div class="definition-source"><a href="{{DefinitionURL}}">'
-            "{{DefinitionSource}}</a></div>"
-        ),
-    }
-
-
-def _v3_recognition_template() -> dict:
-    return {
-        "Name": "Recognition",
-        "Front": _v2_recognition_template()["Front"],
-        "Back": (
-            '<div class="show-all-furigana">{{FrontSide}}</div>\n\n'
-            '<hr id=answer>\n\n{{Back}}\n'
-            '{{#Nuance}}<div class="enrichment-section">'
-            '<div class="enrichment-label">Nuance</div>{{Nuance}}</div>{{/Nuance}}\n'
-            '{{#Example}}<div class="enrichment-section">'
-            '<div class="enrichment-label">Example</div>{{Example}}</div>{{/Example}}\n'
-            '{{#KanjiExplanation}}<div class="enrichment-section">'
-            '<div class="enrichment-label">Why these kanji</div>'
-            '{{KanjiExplanation}}</div>{{/KanjiExplanation}}'
-        ),
-    }
-
-
-def _v3_note_type_css() -> str:
-    return _v2_note_type_css() + """
-
-.enrichment-section {
-    margin-top: 1em;
-    line-height: 1.5;
-}
-
-.enrichment-label {
-    color: #777;
-    font-size: 0.65em;
-    font-weight: bold;
-    margin-bottom: 0.25em;
-    text-transform: uppercase;
-}
-
-.example-target {
-    color: red;
-    font-weight: bold;
-}
-"""
-
-
-def create_note_type_v3() -> None:
-    """Create the isolated V3 vocabulary note type via AnkiConnect."""
-    connect.send_request(
-        "createModel",
-        modelName=VOCAB_NOTE_TYPE_V3,
-        inOrderFields=list(VOCAB_V3_FIELDS.values()),
-        css=_v3_note_type_css(),
-        cardTemplates=[_v3_recognition_template(), _v2_recall_template()],
-    )
-
-
-def update_note_type_v3() -> None:
-    """Validate and update only the existing V3 templates and styling."""
-    actual_fields = connect.send_request(
-        "modelFieldNames", modelName=VOCAB_NOTE_TYPE_V3
-    )
-    expected_fields = list(VOCAB_V3_FIELDS.values())
-    if actual_fields != expected_fields:
-        raise ValueError(
-            f"Note type '{VOCAB_NOTE_TYPE_V3}' has incompatible fields. "
-            f"Expected {expected_fields}, received {actual_fields}."
-        )
-
-    templates = [_v3_recognition_template(), _v2_recall_template()]
-    connect.send_request(
-        "updateModelTemplates",
-        model={
-            "name": VOCAB_NOTE_TYPE_V3,
-            "templates": {
-                template["Name"]: {
-                    "Front": template["Front"],
-                    "Back": template["Back"],
-                }
-                for template in templates
-            },
-        },
-    )
-    connect.send_request(
-        "updateModelStyling",
-        model={"name": VOCAB_NOTE_TYPE_V3, "css": _v3_note_type_css()},
-    )
-
-
-def create_note_type_v2() -> None:
-    """Create the isolated V2 vocabulary note type via AnkiConnect."""
-    connect.send_request(
-        "createModel",
-        modelName=VOCAB_NOTE_TYPE_V2,
-        inOrderFields=list(VOCAB_V2_FIELDS.values()),
-        css=_v2_note_type_css(),
-        cardTemplates=[_v2_recognition_template(), _v2_recall_template()],
-    )
-
-
-def update_note_type_v2() -> None:
-    """Validate and update only the existing V2 templates and styling."""
-    actual_fields = connect.send_request(
-        "modelFieldNames", modelName=VOCAB_NOTE_TYPE_V2
-    )
-    expected_fields = list(VOCAB_V2_FIELDS.values())
-    if actual_fields != expected_fields:
-        raise ValueError(
-            f"Note type '{VOCAB_NOTE_TYPE_V2}' has incompatible fields. "
-            f"Expected {expected_fields}, received {actual_fields}."
-        )
-
-    templates = [_v2_recognition_template(), _v2_recall_template()]
-    connect.send_request(
-        "updateModelTemplates",
-        model={
-            "name": VOCAB_NOTE_TYPE_V2,
-            "templates": {
-                template["Name"]: {
-                    "Front": template["Front"],
-                    "Back": template["Back"],
-                }
-                for template in templates
-            },
-        },
-    )
-    connect.send_request(
-        "updateModelStyling",
-        model={"name": VOCAB_NOTE_TYPE_V2, "css": _v2_note_type_css()},
-    )

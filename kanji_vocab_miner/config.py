@@ -1,11 +1,11 @@
 """Configuration management for kanji-vocab-miner."""
 
-from importlib import resources
 import os
+import tomllib
+from importlib import resources
 from pathlib import Path
 from typing import Optional, Union
 
-import tomllib
 from dotenv import dotenv_values
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -90,42 +90,6 @@ def provision_default_prompt(prompt_path: Union[Path, str]) -> Path:
     return destination
 
 
-# Hardcoded vocabulary deck settings (created via setup command)
-VOCAB_DECK_NAME = "KanjiVocabMiner-Vocabulary"
-LEGACY_VOCAB_NOTE_TYPE = "MyJapaneseVocabulary"
-VOCAB_NOTE_TYPE_V2 = "MyJapaneseVocabularyV2"
-VOCAB_NOTE_TYPE_V3 = "MyJapaneseVocabularyV3"
-VOCAB_NOTE_TYPE = LEGACY_VOCAB_NOTE_TYPE
-VOCAB_TAG = "kanji-vocab-miner"
-
-# Hardcoded field names (note type created with these fields)
-FIELDS = {
-    "front": "Front",
-    "back": "Back",
-    "expression": "Expression",
-    "kana_reading": "Kana Reading",
-    "grammar": "Grammar",
-    "definition": "Definition",
-    "additional_definitions": "Additional Definitions",
-    "jlpt": "JLPT",
-}
-LEGACY_FIELDS = FIELDS
-VOCAB_V2_FIELDS = {
-    **LEGACY_FIELDS,
-    "japanese_definition": "JapaneseDefinition",
-    "japanese_cue": "JapaneseCue",
-    "recall": "Recall",
-    "definition_source": "DefinitionSource",
-    "definition_url": "DefinitionURL",
-}
-VOCAB_V3_FIELDS = {
-    **VOCAB_V2_FIELDS,
-    "nuance": "Nuance",
-    "example": "Example",
-    "kanji_explanation": "KanjiExplanation",
-}
-
-
 def get_config_path() -> Path:
     """Return XDG-compliant config file path.
 
@@ -164,3 +128,17 @@ def load_config() -> AppConfig:
         return AppConfig(**toml_data)
 
     return AppConfig()  # Use defaults + env vars
+
+
+_config: AppConfig | None = None
+
+
+def get_config() -> AppConfig:
+    """Return one lazily loaded configuration shared by application consumers.
+
+    Use load_config() when a fresh read is explicitly needed instead.
+    """
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
