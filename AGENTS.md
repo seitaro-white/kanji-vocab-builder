@@ -99,12 +99,12 @@ Cues preserve raw definition whitespace and the Anki `rt.known` CSS contract.
 ### Typing & Data Models
 1. All new functions should use type hints for parameters and return values.
 2. Prefer concrete generics (`List[str]`) over bare containers.
-3. Pydantic models (`JishoWord`, `KanjiCard`) already express schema constraints—extend them instead of ad-hoc dicts.
-4. When returning tuples or complex structures, document them explicitly in docstrings.
+3. Use named dataclasses for internal concepts passed between functions; reuse existing Pydantic models (`JishoWord`, `KanjiCard`) where runtime schema validation is required. Keep dictionaries for wire serialization or genuine key/value maps, and simple scalars where their meaning is clear.
+4. Prefer named results over anonymous multi-value tuples when the values form a domain concept; document their meaning and dataflow.
 
 ### Formatting & Structure
 1. Follow `black`-style spacing (double quotes, trailing commas in multi-line literals, 88 char guidance). Files already resemble this.
-2. Use docstrings for public functions; short helper functions can use inline comments.
+2. Use Google-style docstrings for functions/classes being changed: describe semantic contracts with `Args:`, `Returns:` and relevant `Raises:`, and class fields with `Attributes:`. One-line docstrings suffice for self-explanatory helpers; avoid repeating type hints or adding empty sections.
 3. Keep functions focused: fetch/process/render responsibilities are already separated (`jisho.py`, `card_processor.py`, `render.py`). Maintain that separation.
 4. Avoid inline lambdas for multi-step transforms; prefer small named helpers for clarity.
 
@@ -141,9 +141,10 @@ Cues preserve raw definition whitespace and the Anki `rt.known` CSS contract.
 1. `card_processor.py` should remain pure logic (no IO). Keep new utilities there deterministic for testing ease.
 2. `render.py` owns Rich-specific presentation logic; avoid bringing Rich into business logic modules.
 3. `utils.py` is small; add generic helpers that have no external dependencies there. If a helper is domain-specific, place it in the relevant module instead.
-4. `cli.py` owns the command loop, commit review state and activity spinner. `vocab_commit.py` orchestrates already-included rows using Anki access from `anki/connect.py` and existing provider/render modules. `anki/vocab_notes.py` constructs current V3 payloads without I/O; compatibility with existing legacy/V2 notes stays in the adapter/setup code. Keep provider validation, retries and concurrency in `enrichment.py`; leave the legacy add helpers unchanged.
-5. Commit tests follow ownership: `tests/test_vocab_commit.py` mocks service boundaries, `tests/test_vocab_notes.py` checks payloads, and `tests/test_anki_connect.py` checks Anki access and legacy behavior.
-6. Use `config.get_config()` for the shared lazy configuration; `config.load_config()` explicitly reads fresh settings. Application workflows should not obtain configuration through the Anki adapter.
+4. `cli.py` owns the command loop, commit review state and activity spinner. `vocab_commit.py` orchestrates included rows; `anki/vocab_notes.py` builds current V3 payloads without I/O. Provider validation, retries and concurrency belong in `enrichment.py`.
+5. In `kanji_vocab_miner/anki/`, `connect.py` owns transport and collection access, including strict versus best-effort inventory contracts. Preserve the executable behavior of legacy `prepare_note`/`add_vocab_note_to_deck`; accurate annotation/docstring updates are allowed. `note_types.py` owns stable legacy/V2/V3 names and immutable `NoteTypeDefinition`/`CardTemplate` concepts; `model_setup.py` serializes them for creation and validated refresh. `schemas.py` holds typed card responses and `VocabNoteFurigana`, the stored-note projection used by maintenance. Top-level `setup.py` owns prerequisite messages and wizard presentation. `furigana_sync.py` owns stored-ruby migration and note-level maintenance across compatible fields, preserving the best-effort reviewed-kanji policy and `rt.known` contract.
+6. Tests follow ownership: `test_vocab_commit.py` mocks application service boundaries; `test_vocab_notes.py` and `test_anki_note_types.py` check pure payloads/formats; `test_anki_connect.py`, `test_anki_model_setup.py` and `test_anki_furigana_sync.py` check their Anki boundaries. `test_setup.py` checks wizard and installer wiring.
+7. Use `config.get_config()` for shared lazy runtime settings; `config.load_config()` explicitly reads fresh settings. Application workflows read configuration directly, not through the Anki adapter. Import collection/model constants from `anki.note_types`, not runtime configuration.
 
 ---
 

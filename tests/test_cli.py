@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from typing import Literal
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
@@ -347,3 +348,22 @@ def test_commit_failures_are_reported_and_retained_in_reviewed_order(
     assert f"最初: {failure_stage} failed" in output
     assert "Added 0; already existed 0; failed 2." in output
     assert continue_loop is True
+
+
+@pytest.mark.parametrize("updated", [0, 2])
+def test_quit_sync_uses_maintenance_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    updated: int,
+) -> None:
+    sync = Mock(return_value=updated)
+    monkeypatch.setattr(cli, "sync_vocab_furigana", sync)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli._sync_furigana_and_exit()
+
+    assert exit_info.value.code == 0
+    sync.assert_called_once_with()
+    output = capsys.readouterr().out
+    assert "Goodbye!" in output
+    assert ("Updated furigana on 2 vocab note(s)." in output) is (updated > 0)

@@ -1,8 +1,8 @@
 """One-off installer for adding the V2 note type to an existing Anki deck."""
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner.config import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE_V2
-from kanji_vocab_miner.setup import create_note_type_v2, update_note_type_v2
+from kanji_vocab_miner.anki.model_setup import create_note_type_v2, update_note_type_v2
+from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME, VOCAB_NOTE_TYPE_V2
 
 
 def install_vocab_v2() -> str:

@@ -9,6 +9,7 @@ import pytest
 from kanji_vocab_miner import config as config_module
 from kanji_vocab_miner import vocab_commit
 from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME
 from kanji_vocab_miner.config import AppConfig
 from kanji_vocab_miner.enrichment import (
     EnrichmentError,
@@ -102,7 +103,7 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
     assert result.failed == []
     assert added_notes[0]["fields"]["Recall"] == ""
     assert added_notes[1]["fields"]["Recall"] == "1"
-    assert all(note["deckName"] == connect.VOCAB_DECK_NAME for note in added_notes)
+    assert all(note["deckName"] == VOCAB_DECK_NAME for note in added_notes)
     assert all(note["modelName"] == "MyJapaneseVocabularyV3" for note in added_notes)
 
 

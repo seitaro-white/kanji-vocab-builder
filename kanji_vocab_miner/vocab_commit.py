@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 
 from kanji_vocab_miner.anki import connect as ankiconnect
+from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME
 from kanji_vocab_miner.anki.vocab_notes import prepare_vocab_note
 from kanji_vocab_miner.config import (
-    VOCAB_DECK_NAME,
     AppConfig,
     get_config,
     get_llm_api_key,

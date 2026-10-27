@@ -3,7 +3,11 @@
 from html import escape
 from typing import Any
 
-from kanji_vocab_miner.config import VOCAB_NOTE_TYPE_V3, VOCAB_TAG, VOCAB_V3_FIELDS
+from kanji_vocab_miner.anki.note_types import (
+    VOCAB_NOTE_TYPE_V3,
+    VOCAB_TAG,
+    VOCAB_V3_FIELDS,
+)
 from kanji_vocab_miner.enrichment import VocabEnrichment, render_example
 from kanji_vocab_miner.kotobank import JapaneseDefinition
 from kanji_vocab_miner.vocab_models import PendingVocabItem
@@ -21,10 +25,24 @@ def prepare_vocab_note(
     japanese_cue: str,
     enrichment: VocabEnrichment,
 ) -> dict[str, Any]:
-    """Build a V3 note from fetched/rendered data and validated enrichment.
+    """Serialize prepared vocabulary content into the current V3 note payload.
 
-    The payload excludes a deck name. Older note types remain readable through
-    the Anki adapter but are not used when constructing new vocabulary notes.
+    Older note types remain readable but are not used for new commits. This
+    function is the wire-serialization edge, not a provider or Anki operation.
+
+    Args:
+        item: Reviewed vocabulary choice and Recall preference. Its word must
+            have at least one English definition.
+        japanese_definition: Plain Japanese senses and dictionary provenance.
+        front: Already-rendered target-word HTML with review-dependent ruby.
+        japanese_cue: Already-rendered Japanese-definition HTML, not plain text.
+        enrichment: Validated model-generated content. Plain text is escaped;
+            the example target is rendered with safe highlighting.
+
+    Returns:
+        An AnkiConnect note mapping with modelName, ordered fields, tags and
+        duplicate options. It deliberately excludes deckName; the application
+        chooses the destination when sending addNote.
     """
     word = item.word
     fields = VOCAB_V3_FIELDS

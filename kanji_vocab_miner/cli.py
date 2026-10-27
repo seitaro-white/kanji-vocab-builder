@@ -20,6 +20,7 @@ from kanji_vocab_miner import (
     vocab_commit,
 )
 from kanji_vocab_miner.anki import connect as ankiconnect
+from kanji_vocab_miner.anki.furigana_sync import sync_vocab_furigana
 from kanji_vocab_miner.anki.schemas import KanjiCard
 from kanji_vocab_miner.jisho import JishoWord
 from kanji_vocab_miner.render import console, error, info, success
@@ -390,7 +391,7 @@ def review_level(level):
 def _sync_furigana_and_exit() -> None:
     """Sync furigana on all vocab cards then exit."""
     with console.status("[bold]Syncing furigana on vocab cards…[/bold]", spinner="dots"):
-        updated = ankiconnect.sync_vocab_furigana()
+        updated = sync_vocab_furigana()
     if updated > 0:
         success(f"Updated furigana on {updated} vocab note(s).")
     click.echo("Goodbye!")
