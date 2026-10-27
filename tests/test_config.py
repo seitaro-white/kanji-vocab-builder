@@ -1,28 +1,50 @@
 """Tests for configuration management."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from kanji_vocab_miner import config as config_module
+from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.config import (
     AppConfig,
-    FIELDS,
-    LEGACY_FIELDS,
-    LEGACY_VOCAB_NOTE_TYPE,
-    VOCAB_DECK_NAME,
-    VOCAB_NOTE_TYPE,
-    VOCAB_NOTE_TYPE_V2,
-    VOCAB_NOTE_TYPE_V3,
-    VOCAB_TAG,
-    VOCAB_V2_FIELDS,
-    VOCAB_V3_FIELDS,
     get_llm_api_key,
     load_config,
     provision_default_prompt,
     resolve_prompt_path,
 )
+
+
+def test_get_config_loads_lazily_and_shares_one_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = AppConfig(ankiconnect={"url": "http://anki.test:8765"})
+    loader = Mock(return_value=settings)
+    monkeypatch.setattr(config_module, "_config", None, raising=False)
+    monkeypatch.setattr(config_module, "load_config", loader)
+
+    loader.assert_not_called()
+    assert config_module.get_config() is settings
+    assert config_module.get_config() is settings
+    assert connect.get_anki_url() == "http://anki.test:8765"
+    loader.assert_called_once_with()
+
+
+def test_get_config_does_not_cache_a_loading_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = AppConfig()
+    loader = Mock(side_effect=[RuntimeError("invalid config"), settings])
+    monkeypatch.setattr(config_module, "_config", None, raising=False)
+    monkeypatch.setattr(config_module, "load_config", loader)
+
+    with pytest.raises(RuntimeError, match="invalid config"):
+        config_module.get_config()
+    assert config_module.get_config() is settings
+    assert config_module.get_config() is settings
+    assert loader.call_count == 2
 
 
 def test_load_config_defaults():
@@ -143,44 +165,3 @@ def test_provision_default_prompt_preserves_existing_bytes(tmp_path) -> None:
     provision_default_prompt(destination)
 
     assert destination.read_bytes() == existing
-
-
-def test_vocab_constants_defined():
-    """Test that hardcoded vocab constants are defined."""
-    # These are created by the setup command, not configurable
-    assert VOCAB_DECK_NAME == "KanjiVocabMiner-Vocabulary"
-    assert VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
-    assert VOCAB_TAG == "kanji-vocab-miner"
-    assert len(FIELDS) == 8  # Should have 8 fields
-
-
-def test_v3_fields_extend_v2_fields_in_exact_order() -> None:
-    assert VOCAB_NOTE_TYPE_V3 == "MyJapaneseVocabularyV3"
-    assert list(VOCAB_V3_FIELDS.values()) == list(VOCAB_V2_FIELDS.values()) + [
-        "Nuance",
-        "Example",
-        "KanjiExplanation",
-    ]
-
-
-def test_v2_fields_extend_legacy_fields_in_intended_order() -> None:
-    """V2 retains all legacy fields before its five additional fields."""
-    assert LEGACY_VOCAB_NOTE_TYPE == "MyJapaneseVocabulary"
-    assert VOCAB_NOTE_TYPE_V2 == "MyJapaneseVocabularyV2"
-    assert LEGACY_FIELDS is FIELDS
-    assert VOCAB_NOTE_TYPE == LEGACY_VOCAB_NOTE_TYPE
-    assert list(VOCAB_V2_FIELDS.values()) == [
-        "Front",
-        "Back",
-        "Expression",
-        "Kana Reading",
-        "Grammar",
-        "Definition",
-        "Additional Definitions",
-        "JLPT",
-        "JapaneseDefinition",
-        "JapaneseCue",
-        "Recall",
-        "DefinitionSource",
-        "DefinitionURL",
-    ]

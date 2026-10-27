@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Set
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner.config import VOCAB_NOTE_TYPE_V2, VOCAB_V2_FIELDS
+from kanji_vocab_miner.anki.note_types import VOCAB_NOTE_TYPE_V2, VOCAB_V2_FIELDS
 from kanji_vocab_miner.furigana import (
     render_japanese_cue,
     update_furigana_visibility,

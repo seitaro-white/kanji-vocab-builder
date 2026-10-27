@@ -1,51 +1,15 @@
+from collections.abc import Callable
 from datetime import date, datetime
 from types import SimpleNamespace
-from typing import Any
+from unittest.mock import Mock
 
 import pytest
 import requests
 
 from kanji_vocab_miner.anki import connect
-from kanji_vocab_miner.config import AppConfig
-from kanji_vocab_miner.enrichment import EnrichmentError, VocabEnrichment
-from kanji_vocab_miner.review_status import KanjiReviewStatus
+from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME
 from kanji_vocab_miner.jisho import JishoWord
-from kanji_vocab_miner.kotobank import JapaneseDefinition
-from kanji_vocab_miner.vocab_models import PendingVocabItem
-
-
-def _definition(expression: str) -> JapaneseDefinition:
-    return JapaneseDefinition(
-        expression=expression,
-        senses=[f"{expression}の定義。"],
-        source_name="辞書",
-        source_url=f"https://example.test/{expression}",
-    )
-
-
-def _enrichment(expression: str) -> VocabEnrichment:
-    return VocabEnrichment(
-        nuance=f"Nuance for {expression}.",
-        example_sentence=f"{expression}を使う。",
-        example_target=expression,
-        kanji_explanation=f"Kanji for {expression}.",
-    )
-
-
-class FakeEnrichmentClient:
-    def __init__(self, failures=None):
-        self.failures = failures or {}
-        self.calls = []
-
-    def generate(self, word):
-        self.calls.append(word.expression)
-        if word.expression in self.failures:
-            raise EnrichmentError(self.failures[word.expression])
-        return _enrichment(word.expression)
-
-
-def _config(concurrency: int = 5) -> AppConfig:
-    return AppConfig(llm={"concurrency": concurrency})
+from kanji_vocab_miner.review_status import KanjiReviewStatus
 
 
 @pytest.mark.integration
@@ -73,6 +37,7 @@ def test_ping_anki():
         print(f"Successfully connected to AnkiConnect (version {result['result']})")
     except (requests.RequestException, ConnectionError) as e:
         pytest.fail(f"Failed to connect to Anki: {str(e)}. Make sure Anki is running with AnkiConnect installed.")
+
 
 @pytest.mark.integration
 def test_get_current_kanji():
@@ -118,6 +83,7 @@ def test_get_reviewed_kanji():
 
     print(f"Successfully retrieved {len(kanji_set)} reviewed kanji")
 
+
 @pytest.mark.integration
 def test_get_reviewed_vocab():
     """
@@ -142,6 +108,209 @@ def test_get_reviewed_vocab():
         assert len(word) > 0, "Encountered an empty string in reviewed vocabulary"
 
     print(f"Successfully retrieved {len(vocab_list)} reviewed vocabulary words")
+
+
+def test_transport_preserves_action_payload_and_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = Mock()
+    response.json.return_value = {"result": [123], "error": None}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(connect, "get_anki_url", lambda: "http://anki.invalid:8765")
+    monkeypatch.setattr(requests, "post", post)
+
+    assert connect.send_request("findCards", query='deck:"Kanji"') == [123]
+    post.assert_called_once_with(
+        "http://anki.invalid:8765",
+        json={"action": "findCards", "version": 6, "params": {"query": 'deck:"Kanji"'}},
+    )
+    response.raise_for_status.assert_called_once_with()
+
+
+@pytest.mark.parametrize("data, expected", [({}, None), ({"result": None}, None)])
+def test_transport_allows_missing_or_null_result(
+    monkeypatch: pytest.MonkeyPatch, data: dict[str, None], expected: None
+) -> None:
+    response = Mock()
+    response.json.return_value = data
+    monkeypatch.setattr(requests, "post", Mock(return_value=response))
+    assert connect.send_request("version") is expected
+
+
+def test_transport_propagates_anki_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = Mock()
+    response.json.return_value = {"result": None, "error": "invalid action"}
+    monkeypatch.setattr(requests, "post", Mock(return_value=response))
+    with pytest.raises(Exception, match="AnkiConnect error: invalid action"):
+        connect.send_request("invalid")
+
+
+def test_transport_wraps_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = Mock()
+    response.raise_for_status.side_effect = requests.HTTPError("HTTP 500")
+    monkeypatch.setattr(requests, "post", Mock(return_value=response))
+    with pytest.raises(Exception, match="Failed to connect to Anki: HTTP 500"):
+        connect.send_request("version")
+    response.json.assert_not_called()
+
+
+def test_update_note_passes_note_id_and_returns_anki_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    send = Mock(return_value="updated")
+    monkeypatch.setattr(connect, "send_request", send)
+    assert connect.update_note(card_id=101, fields={"Front": "学"}) == "updated"
+    send.assert_called_once_with(
+        "updateNote", note={"id": 101, "fields": {"Front": "学"}}
+    )
+
+
+@pytest.mark.parametrize("response", [[], [{}, {}]])
+def test_card_read_rejects_missing_or_ambiguous_ids(
+    monkeypatch: pytest.MonkeyPatch, response: list[dict[str, object]]
+) -> None:
+    send = Mock(return_value=response)
+    monkeypatch.setattr(connect, "send_request", send)
+    with pytest.raises(Exception, match="ID 77"):
+        connect.get_kanji_card_info(77)
+    send.assert_called_once_with("cardsInfo", cards=[77])
+
+
+@pytest.mark.parametrize("response", [None, {}, {"other": 1}])
+def test_current_card_returns_none_without_card_id(
+    monkeypatch: pytest.MonkeyPatch, response: dict[str, int] | None
+) -> None:
+    send = Mock(return_value=response)
+    monkeypatch.setattr(connect, "send_request", send)
+    assert connect.get_current_card() is None
+    send.assert_called_once_with("guiCurrentCard")
+
+
+def test_reposition_preserves_card_action_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    send = Mock()
+    monkeypatch.setattr(connect, "send_request", send)
+    connect.reposition_card_to_top(77)
+    send.assert_called_once_with(
+        "setSpecificValueOfCard", card=77, keys=["due"], newValues=[0]
+    )
+    send.side_effect = RuntimeError("unavailable")
+    with pytest.raises(Exception, match="Failed to reposition card 77: unavailable"):
+        connect.reposition_card_to_top(77)
+
+
+def test_reviewed_kanji_keeps_flag_rule_and_field_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        connect, "get_config",
+        lambda: SimpleNamespace(kanji_deck=SimpleNamespace(name="Kanji Deck")),
+    )
+    send = Mock(side_effect=[
+        [1, 2, 3, 4],
+        [
+            {"fields": {"Kanji": {"value": "学"}}},
+            {"fields": {"Kanji": {"value": "学"}}},
+            {"fields": {"Front": {"value": "校"}}},
+            {"fields": {"Kanji": {"value": " 学校 "}}},
+        ],
+    ])
+    monkeypatch.setattr(connect, "send_request", send)
+    assert connect.get_reviewed_kanji() == {"学", " 学校 "}
+    assert send.call_args_list[0].kwargs == {
+        "query": 'deck:"Kanji Deck" (-is:new OR flag:1)'
+    }
+    assert send.call_args_list[1].kwargs == {"cards": [1, 2, 3, 4]}
+
+
+@pytest.mark.parametrize("loader", [connect.get_all_kanji, connect.get_reviewed_kanji])
+def test_kanji_inventory_failures_remain_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    loader: Callable[[], set[str]],
+) -> None:
+    monkeypatch.setattr(
+        connect, "send_request", Mock(side_effect=RuntimeError("offline"))
+    )
+    assert loader() == set()
+    assert "offline" in capsys.readouterr().out
+
+
+def test_vocab_inventory_is_strict_but_legacy_wrapper_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        connect, "send_request", Mock(side_effect=RuntimeError("offline"))
+    )
+    with pytest.raises(RuntimeError, match="offline"):
+        connect.get_vocab_expressions()
+    assert connect.get_reviewed_vocab() == []
+
+
+def test_reviewed_vocab_wrapper_returns_all_expressions_sorted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: {"猫", "学校", "犬"})
+    assert connect.get_reviewed_vocab() == ["学校", "犬", "猫"]
+
+
+def test_empty_inventories_skip_info_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    send = Mock(return_value=None)
+    monkeypatch.setattr(connect, "send_request", send)
+    assert connect.get_reviewed_kanji(should_raise=True) == set()
+    assert connect.get_all_kanji() == set()
+    assert connect.get_vocab_expressions() == set()
+    assert [call.args[0] for call in send.call_args_list] == [
+        "findCards", "findCards", "findNotes"
+    ]
+
+
+def test_strict_reviewed_inventory_propagates_malformed_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    send = Mock(side_effect=[
+        [1, 2],
+        [{"fields": {"Kanji": {"value": "学"}}}, {"fields": {"Kanji": {}}}],
+    ])
+    monkeypatch.setattr(connect, "send_request", send)
+    with pytest.raises(KeyError, match="value"):
+        connect.get_reviewed_kanji(should_raise=True)
+
+
+def test_legacy_add_keeps_skipping_preparation_duplicates_and_write_failures(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    words = [
+        JishoWord(expression=expression, kana="かな", jlpt=0, definitions=["meaning"])
+        for expression in ("失敗", "重複", "中断", "成功")
+    ]
+    prepare = Mock(side_effect=[
+        ValueError("bad reading"),
+        {"fields": {"Expression": "重複"}},
+        {"fields": {"Expression": "中断"}},
+        {"fields": {"Expression": "成功"}},
+    ])
+    send = Mock(side_effect=[RuntimeError("duplicate"), RuntimeError("offline"), 123])
+    monkeypatch.setattr(connect, "prepare_note", prepare)
+    monkeypatch.setattr(connect, "send_request", send)
+    monkeypatch.setattr(connect, "tqdm", lambda values, **kwargs: values)
+
+    assert connect.add_vocab_note_to_deck(words, "Custom Deck", {"学"}) is None
+    assert all(call.args[1] == {"学"} for call in prepare.call_args_list)
+    expressions = [
+        call.kwargs["note"]["fields"]["Expression"] for call in send.call_args_list
+    ]
+    assert expressions == ["重複", "中断", "成功"]
+    assert all(
+        call.kwargs["note"]["deckName"] == "Custom Deck"
+        for call in send.call_args_list
+    )
+    assert capsys.readouterr().out.splitlines() == [
+        "Error preparing note for 失敗: bad reading",
+        "Error adding note for 中断: offline",
+        "Added 1 notes. Skipped 1 duplicate notes.",
+    ]
 
 
 def test_get_all_kanji_ignores_review_state(monkeypatch):
@@ -207,7 +376,7 @@ def test_count_vocab_notes_added_since_uses_note_creation_dates(monkeypatch):
     later_note = note_id(2026, 9, 4)
     def fake_send(action, **params):
         assert action == "findNotes"
-        assert params["query"] == f'deck:"{connect.VOCAB_DECK_NAME}"'
+        assert params["query"] == f'deck:"{VOCAB_DECK_NAME}"'
         return [old_note, first_tracked_note, later_note, later_note]
 
     monkeypatch.setattr(connect, "send_request", fake_send)
@@ -245,486 +414,6 @@ def test_find_kanji_card_id_returns_none_for_unknown():
     assert result is None
 
 
-def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch) -> None:
-    """Recognition-only and recall items both receive sequential definition lookups."""
-    items = [
-        PendingVocabItem(word=JishoWord(expression="学校", kana="がっこう", jlpt=5, definitions=["school"])),
-        PendingVocabItem(
-            word=JishoWord(expression="覚える", kana="おぼえる", jlpt=4, definitions=["remember"]),
-            recall_enabled=True,
-        ),
-    ]
-    lookups = []
-    added_notes = []
-
-    class FakeClient:
-        def lookup(self, expression):
-            lookups.append(expression)
-            return JapaneseDefinition(
-                expression=expression,
-                senses=[f"{expression}の定義"],
-                source_name="デジタル大辞泉",
-                source_url=f"https://kotobank.jp/word/{expression}",
-            )
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: {"学"})
-    monkeypatch.setattr(
-        connect, "fetch_jisho_word_furigana", lambda expression, reviewed: f"front:{expression}"
-    )
-    monkeypatch.setattr(
-        connect, "render_japanese_cue", lambda senses, reviewed: f"cue:{senses[0]}"
-    )
-    monkeypatch.setattr(
-        connect,
-        "send_request",
-        lambda action, **params: added_notes.append(params["note"]),
-    )
-
-    result = connect.add_vocab_items(
-        items,
-        client=FakeClient(),
-        enrichment_client=FakeEnrichmentClient(),
-        config=_config(),
-    )
-
-    assert lookups == ["学校", "覚える"]
-    assert len(result.added) == 2
-    assert result.failed == []
-    assert added_notes[0]["fields"]["Recall"] == ""
-    assert added_notes[1]["fields"]["Recall"] == "1"
-    assert all(note["deckName"] == connect.VOCAB_DECK_NAME for note in added_notes)
-    assert all(note["modelName"] == "MyJapaneseVocabularyV3" for note in added_notes)
-
-
-def test_add_vocab_items_prepares_native_sudachi_cue_with_mocked_io(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Exercise real cue generation while keeping every external operation mocked."""
-    item = PendingVocabItem(
-        word=JishoWord(expression="猫", kana="ねこ", jlpt=5, definitions=["cat"])
-    )
-    definition = JapaneseDefinition(
-        expression="猫",
-        senses=[" 国家公務員\r\n\n\n𠮷𠮷 ", "<猫>"],
-        source_name="辞書",
-        source_url="https://example.test/cat",
-    )
-    notes: list[dict[str, Any]] = []
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set("国家公務員"))
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "jisho-front")
-
-    def capture_note(action: str, **params: Any) -> int:
-        assert action == "addNote"
-        notes.append(params["note"])
-        return 123
-
-    monkeypatch.setattr(connect, "send_request", capture_note)
-    result = connect.add_vocab_items(
-        [item],
-        client=SimpleNamespace(lookup=lambda expression: definition),
-        enrichment_client=FakeEnrichmentClient(),
-        config=_config(),
-    )
-
-    assert result.added == [item]
-    assert result.failed == []
-    assert notes[0]["fields"]["Front"] == "jisho-front"
-    assert notes[0]["fields"]["JapaneseCue"] == (
-        '<div class="sense"> <ruby>国家公務員<rt class="known">こっかこうむいん'
-        '</rt></ruby>\r\n\n\n𠮷𠮷 </div><br><div class="sense">'
-        '&lt;<ruby>猫<rt>ねこ</rt></ruby>&gt;</div>'
-    )
-
-
-def test_add_vocab_items_classifies_partial_failures_and_duplicates(monkeypatch) -> None:
-    """A failed row is retained while later rows still commit successfully."""
-    duplicate = PendingVocabItem(word=JishoWord(expression="学校", kana="がっこう", jlpt=5, definitions=["school"]))
-    failed = PendingVocabItem(word=JishoWord(expression="不存在", kana="ふそんざい", jlpt=0, definitions=["missing"]))
-    added = PendingVocabItem(word=JishoWord(expression="猫", kana="ねこ", jlpt=5, definitions=["cat"]))
-
-    lookups = []
-
-    class FakeClient:
-        def lookup(self, expression):
-            lookups.append(expression)
-            if expression == "不存在":
-                raise RuntimeError("definition missing")
-            return JapaneseDefinition(
-                expression=expression,
-                senses=["動物。"],
-                source_name="デジタル大辞泉",
-                source_url="https://kotobank.jp/word/猫",
-            )
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: {"学校"})
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "front")
-    monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-    monkeypatch.setattr(connect, "send_request", lambda *args, **kwargs: 42)
-
-    enrichment_client = FakeEnrichmentClient()
-    result = connect.add_vocab_items(
-        [duplicate, failed, added],
-        client=FakeClient(),
-        enrichment_client=enrichment_client,
-        config=_config(),
-    )
-
-    assert result.skipped_duplicates == [duplicate]
-    assert result.added == [added]
-    assert len(result.failed) == 1
-    assert result.failed[0].item is failed
-    assert result.failed[0].stage == "definition"
-    assert result.failed[0].message == "definition missing"
-    assert lookups == ["不存在", "猫"]
-    assert enrichment_client.calls == ["猫"]
-
-
-@pytest.mark.parametrize(
-    ("failing_operation", "expected_stage"),
-    [("furigana", "furigana"), ("addNote", "anki")],
-)
-def test_add_vocab_items_labels_preparation_and_anki_failures(
-    monkeypatch, failing_operation, expected_stage
-) -> None:
-    """Failures after definition lookup retain their actionable stage."""
-    item = PendingVocabItem(
-        word=JishoWord(
-            expression="学校", kana="がっこう", jlpt=5, definitions=["school"]
-        )
-    )
-
-    class FakeClient:
-        def lookup(self, expression):
-            return JapaneseDefinition(
-                expression=expression,
-                senses=["教育を行う所。"],
-                source_name="デジタル大辞泉",
-                source_url="https://kotobank.jp/word/学校",
-            )
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "front")
-    if failing_operation == "furigana":
-        monkeypatch.setattr(
-            connect,
-            "render_japanese_cue",
-            lambda *args: (_ for _ in ()).throw(RuntimeError("cue failed")),
-        )
-    else:
-        monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-        monkeypatch.setattr(
-            connect,
-            "send_request",
-            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("add failed")),
-        )
-
-    result = connect.add_vocab_items(
-        [item],
-        client=FakeClient(),
-        enrichment_client=FakeEnrichmentClient(),
-        config=_config(),
-    )
-
-    assert result.added == []
-    assert len(result.failed) == 1
-    assert result.failed[0].stage == expected_stage
-
-
-def test_add_vocab_items_missing_key_short_circuits_after_duplicates(
-    monkeypatch,
-) -> None:
-    duplicate = PendingVocabItem(
-        word=JishoWord(
-            expression="既存", kana="きそん", jlpt=0, definitions=["existing"]
-        )
-    )
-    eligible = PendingVocabItem(
-        word=JishoWord(
-            expression="新規", kana="しんき", jlpt=0, definitions=["new"]
-        ),
-        recall_enabled=True,
-    )
-    forbidden_calls = []
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: {"既存"})
-    monkeypatch.setattr(connect, "get_llm_api_key", lambda: None)
-    monkeypatch.setattr(
-        connect,
-        "get_reviewed_kanji",
-        lambda: forbidden_calls.append("reviewed") or set(),
-    )
-    monkeypatch.setattr(
-        connect,
-        "fetch_jisho_word_furigana",
-        lambda *args: forbidden_calls.append("jisho"),
-    )
-    monkeypatch.setattr(
-        connect,
-        "send_request",
-        lambda *args, **kwargs: forbidden_calls.append("anki"),
-    )
-
-    class ForbiddenKotobank:
-        def lookup(self, expression):
-            forbidden_calls.append("kotobank")
-
-    result = connect.add_vocab_items(
-        [duplicate, eligible], client=ForbiddenKotobank(), config=_config()
-    )
-
-    assert result.skipped_duplicates == [duplicate]
-    assert result.added == []
-    assert [failure.item for failure in result.failed] == [eligible]
-    assert result.failed[0].stage == "enrichment"
-    assert "KANJI_VOCAB_MINER_LLM__API_KEY" in result.failed[0].message
-    assert eligible.recall_enabled is True
-    assert forbidden_calls == []
-
-
-def test_add_vocab_items_constructs_enrichment_client_from_config(
-    monkeypatch, tmp_path
-) -> None:
-    item = PendingVocabItem(
-        JishoWord(
-            expression="学校", kana="がっこう", jlpt=5, definitions=["school"]
-        )
-    )
-    prompt_path = tmp_path / "prompt.md"
-    constructed = []
-
-    class ConstructedClient:
-        def __init__(self, api_key, prompt_path):
-            constructed.append((api_key, prompt_path))
-
-        def generate(self, word):
-            return _enrichment(word.expression)
-
-    class DefinitionClient:
-        def lookup(self, expression):
-            return _definition(expression)
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_llm_api_key", lambda: "environment-key")
-    monkeypatch.setattr(connect, "DeepSeekEnrichmentClient", ConstructedClient)
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "front")
-    monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-    monkeypatch.setattr(connect, "send_request", lambda *args, **kwargs: 1)
-
-    result = connect.add_vocab_items(
-        [item],
-        client=DefinitionClient(),
-        config=AppConfig(llm={"prompt_path": prompt_path, "concurrency": 1}),
-    )
-
-    assert constructed == [("environment-key", prompt_path)]
-    assert result.added == [item]
-
-
-def test_add_vocab_items_writes_v3_successes_in_reviewed_order(
-    monkeypatch,
-) -> None:
-    items = [
-        PendingVocabItem(
-            word=JishoWord(
-                expression=expression,
-                kana=expression,
-                jlpt=0,
-                definitions=["meaning"],
-            )
-        )
-        for expression in ["学校", "不存在", "猫", "犬"]
-    ]
-    added_expressions = []
-
-    class DefinitionClient:
-        def lookup(self, expression):
-            return _definition(expression)
-
-    def fake_send(action, **params):
-        assert action == "addNote"
-        assert params["note"]["modelName"] == "MyJapaneseVocabularyV3"
-        added_expressions.append(params["note"]["fields"]["Expression"])
-        return len(added_expressions)
-
-    enrichment_client = FakeEnrichmentClient(
-        failures={"不存在": "generation rejected"}
-    )
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-    monkeypatch.setattr(
-        connect,
-        "fetch_jisho_word_furigana",
-        lambda expression, reviewed: f"front:{expression}",
-    )
-    monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-    monkeypatch.setattr(connect, "send_request", fake_send)
-
-    result = connect.add_vocab_items(
-        items,
-        client=DefinitionClient(),
-        enrichment_client=enrichment_client,
-        config=_config(concurrency=2),
-    )
-
-    assert added_expressions == ["学校", "猫", "犬"]
-    assert result.added == [items[0], items[2], items[3]]
-    assert [failure.item for failure in result.failed] == [items[1]]
-    assert result.failed[0].stage == "enrichment"
-    assert result.failed[0].message == "generation rejected"
-
-
-def test_add_vocab_items_returns_mixed_failures_in_reviewed_order(
-    monkeypatch,
-) -> None:
-    items = [
-        PendingVocabItem(
-            word=JishoWord(
-                expression=expression,
-                kana=expression,
-                jlpt=0,
-                definitions=["meaning"],
-            )
-        )
-        for expression in ["definition", "enrichment", "furigana", "anki"]
-    ]
-
-    class DefinitionClient:
-        def lookup(self, expression):
-            if expression == "definition":
-                raise RuntimeError("definition failed")
-            return _definition(expression)
-
-    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-
-    def fake_furigana(expression, reviewed):
-        if expression == "furigana":
-            raise RuntimeError("furigana failed")
-        return f"front:{expression}"
-
-    def fake_send(action, **params):
-        assert action == "addNote"
-        raise RuntimeError("anki failed")
-
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", fake_furigana)
-    monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-    monkeypatch.setattr(connect, "send_request", fake_send)
-
-    result = connect.add_vocab_items(
-        items,
-        client=DefinitionClient(),
-        enrichment_client=FakeEnrichmentClient(
-            failures={"enrichment": "enrichment failed"}
-        ),
-        config=_config(),
-    )
-
-    assert [failure.item for failure in result.failed] == items
-    assert [failure.stage for failure in result.failed] == [
-        "definition",
-        "enrichment",
-        "furigana",
-        "anki",
-    ]
-
-
-def test_add_vocab_items_progress_has_one_terminal_event_per_input(
-    monkeypatch,
-) -> None:
-    duplicate = PendingVocabItem(
-        JishoWord(expression="duplicate", kana="", jlpt=0, definitions=["x"])
-    )
-    failed = PendingVocabItem(
-        JishoWord(expression="failed", kana="", jlpt=0, definitions=["x"])
-    )
-    added = PendingVocabItem(
-        JishoWord(expression="added", kana="", jlpt=0, definitions=["x"])
-    )
-    events = []
-
-    class DefinitionClient:
-        def lookup(self, expression):
-            if expression == "failed":
-                raise RuntimeError("missing")
-            return _definition(expression)
-
-    monkeypatch.setattr(
-        connect, "get_vocab_expressions", lambda: {"duplicate"}
-    )
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
-    monkeypatch.setattr(connect, "fetch_jisho_word_furigana", lambda *args: "front")
-    monkeypatch.setattr(connect, "render_japanese_cue", lambda *args: "cue")
-    monkeypatch.setattr(connect, "send_request", lambda *args, **kwargs: 1)
-
-    connect.add_vocab_items(
-        [duplicate, failed, added],
-        client=DefinitionClient(),
-        enrichment_client=FakeEnrichmentClient(),
-        on_progress=events.append,
-        config=_config(),
-    )
-
-    terminal_events = [event for event in events if event.is_terminal]
-    assert [event.completed for event in terminal_events] == [1, 2, 3]
-    assert [event.item for event in terminal_events] == [duplicate, failed, added]
-    assert [event.outcome for event in terminal_events] == [
-        "duplicate",
-        "failed",
-        "added",
-    ]
-    assert all(event.total == 3 for event in events)
-    assert any(
-        event.phase == "enrichment" and not event.is_terminal
-        for event in events
-    )
-
-
-def test_sync_vocab_furigana_updates_front_and_cue_once_per_note(monkeypatch) -> None:
-    """Furigana sync writes all changed V2 fields in one note update."""
-    calls = []
-
-    def fake_send(action, **params):
-        calls.append((action, params))
-        if action == "findNotes":
-            return [10]
-        if action == "notesInfo":
-            return [
-                {
-                    "noteId": 10,
-                    "fields": {
-                        "Front": {"value": "<ruby>学校<rt>がっこう</rt></ruby>"},
-                        "JapaneseCue": {"value": "<ruby>教育<rt>きょういく</rt></ruby>"},
-                        "JapaneseDefinition": {"value": "教育を行う所。"},
-                    },
-                }
-            ]
-        if action == "updateNote":
-            return None
-        raise AssertionError(action)
-
-    monkeypatch.setattr(connect, "send_request", fake_send)
-    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: {"学", "校", "教", "育"})
-
-    assert connect.sync_vocab_furigana() == 1
-    update = [params for action, params in calls if action == "updateNote"]
-    assert update == [
-        {
-            "note": {
-                "id": 10,
-                "fields": {
-                    "Front": '<ruby>学校<rt class="known">がっこう</rt></ruby>',
-                    "JapaneseCue": '<ruby>教育<rt class="known">きょういく</rt></ruby>',
-                },
-            }
-        }
-    ]
-
-
 def test_get_vocab_expressions_reads_unique_note_fields(monkeypatch) -> None:
     """Duplicate detection reads Expression once per note across model types."""
     calls = []
@@ -732,67 +421,33 @@ def test_get_vocab_expressions_reads_unique_note_fields(monkeypatch) -> None:
     def fake_send(action, **params):
         calls.append((action, params))
         if action == "findNotes":
-            return [10, 20, 30]
+            return [10, 20, 30, 40, 50, 60]
+        assert action == "notesInfo"
         return [
-            {"fields": {"Expression": {"value": "学校"}}},
+            {
+                "modelName": "MyJapaneseVocabulary",
+                "fields": {"Expression": {"value": "学校"}},
+            },
+            {
+                "modelName": "MyJapaneseVocabularyV2",
+                "fields": {"Expression": {"value": " 猫 "}},
+            },
+            {
+                "modelName": "MyJapaneseVocabularyV3",
+                "fields": {"Expression": {"value": "犬"}},
+            },
             {"fields": {"Expression": {"value": "学校"}}},
             {"fields": {"Front": {"value": "legacy malformed"}}},
+            {"fields": {"Expression": {"value": "  "}}},
         ]
 
     monkeypatch.setattr(connect, "send_request", fake_send)
 
-    assert connect.get_vocab_expressions() == {"学校"}
+    assert connect.get_vocab_expressions() == {"学校", "猫", "犬"}
     assert calls == [
         ("findNotes", {"query": 'deck:"KanjiVocabMiner-Vocabulary"'}),
-        ("notesInfo", {"notes": [10, 20, 30]}),
+        ("notesInfo", {"notes": [10, 20, 30, 40, 50, 60]}),
     ]
-
-
-def test_prepare_note_v2_builds_exact_recognition_only_payload() -> None:
-    """V2 serialization includes Japanese provenance even when Recall is blank."""
-    item = PendingVocabItem(
-        word=JishoWord(
-            expression="学校",
-            kana="がっこう",
-            jlpt=5,
-            definitions=["school", "educational institution"],
-            parts_of_speech=["Noun"],
-        )
-    )
-    definition = JapaneseDefinition(
-        expression="学校",
-        senses=["教育を行う所。", "学びを得る場所。"],
-        source_name="デジタル大辞泉",
-        source_url="https://kotobank.jp/word/学校",
-    )
-
-    note = connect.prepare_note_v2(
-        item,
-        definition,
-        front="<ruby>学校<rt>がっこう</rt></ruby>",
-        japanese_cue='<div class="sense">教育を行う所。</div>',
-    )
-
-    assert note == {
-        "modelName": "MyJapaneseVocabularyV2",
-        "fields": {
-            "Front": "<ruby>学校<rt>がっこう</rt></ruby>",
-            "Back": "school",
-            "Expression": "学校",
-            "Kana Reading": "がっこう",
-            "Grammar": "Noun",
-            "Definition": "school",
-            "Additional Definitions": "educational institution",
-            "JLPT": "JLPT N5",
-            "JapaneseDefinition": "教育を行う所。\n学びを得る場所。",
-            "JapaneseCue": '<div class="sense">教育を行う所。</div>',
-            "Recall": "",
-            "DefinitionSource": "デジタル大辞泉",
-            "DefinitionURL": "https://kotobank.jp/word/学校",
-        },
-        "tags": ["kanji-vocab-miner"],
-        "options": {"allowDuplicate": False},
-    }
 
 
 def test_prepare_legacy_note_keeps_primary_and_additional_definitions(monkeypatch):
@@ -861,37 +516,3 @@ def test_prepare_legacy_note_leaves_additional_definitions_empty_for_one_sense(
         "options": {"allowDuplicate": False},
     }
     assert prepared_note_minimal == expected_note_minimal
-
-
-def test_prepare_note_v3_builds_exact_safe_payload() -> None:
-    item = PendingVocabItem(
-        word=JishoWord(
-            expression="学校", kana="がっこう", jlpt=5,
-            definitions=["school", "institution"], parts_of_speech=["Noun"]
-        ), recall_enabled=True,
-    )
-    definition = JapaneseDefinition(
-        expression="学校", senses=["教育を行う所。"], source_name="辞書",
-        source_url="https://example.test/学校",
-    )
-    enrichment = VocabEnrichment(
-        nuance='Formal & useful\n"context"',
-        example_sentence="私は<学校>へ行く。",
-        example_target="学校",
-        kanji_explanation="学ぶ & 校舎\n組み合わせ",
-    )
-
-    note = connect.prepare_note_v3(item, definition, "front", "cue", enrichment)
-
-    assert note["modelName"] == "MyJapaneseVocabularyV3"
-    assert set(note["fields"]) == {
-        "Front", "Back", "Expression", "Kana Reading", "Grammar", "Definition",
-        "Additional Definitions", "JLPT", "JapaneseDefinition", "JapaneseCue",
-        "Recall", "DefinitionSource", "DefinitionURL", "Nuance", "Example",
-        "KanjiExplanation",
-    }
-    assert note["fields"]["Nuance"] == "Formal &amp; useful<br>&quot;context&quot;"
-    assert note["fields"]["Example"] == (
-        "私は&lt;<strong class=\"example-target\">学校</strong>&gt;へ行く。"
-    )
-    assert note["fields"]["KanjiExplanation"] == "学ぶ &amp; 校舎<br>組み合わせ"

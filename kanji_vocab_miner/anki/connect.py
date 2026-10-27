@@ -1,62 +1,22 @@
-from dataclasses import dataclass
+"""AnkiConnect transport, collection access and supported legacy add helpers."""
+
 from datetime import date, datetime
-from html import escape
-import json
-import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 from tqdm import tqdm
 
-from kanji_vocab_miner.anki.schemas import KanjiCard
-from kanji_vocab_miner.config import (
-    AppConfig,
+from kanji_vocab_miner.anki.note_types import (
     FIELDS,
     VOCAB_DECK_NAME,
     VOCAB_NOTE_TYPE,
-    VOCAB_NOTE_TYPE_V2,
-    VOCAB_NOTE_TYPE_V3,
     VOCAB_TAG,
-    VOCAB_V2_FIELDS,
-    VOCAB_V3_FIELDS,
-    get_llm_api_key,
-    load_config,
-    resolve_prompt_path,
 )
-from kanji_vocab_miner.enrichment import (
-    DeepSeekEnrichmentClient,
-    VocabEnrichment,
-    generate_enrichments,
-    render_example,
-)
-from kanji_vocab_miner.furigana import (
-    render_japanese_cue,
-    update_furigana_visibility,
-)
+from kanji_vocab_miner.anki.schemas import KanjiCard
+from kanji_vocab_miner.config import get_config
 from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
-from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.review_status import KanjiReviewStatus
 from kanji_vocab_miner.utils import is_kanji
-from kanji_vocab_miner.vocab_models import (
-    AddFailure,
-    BatchAddResult,
-    CommitPhase,
-    CommitProgressCallback,
-    CommitProgressEvent,
-    CommitTerminalOutcome,
-    PendingVocabItem,
-)
-
-# Lazy-loaded configuration
-_config = None
-
-
-def get_config():
-    """Get or load the application configuration."""
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
 
 
 def get_anki_url() -> str:
@@ -65,19 +25,20 @@ def get_anki_url() -> str:
 
 
 # Low Level
-def send_request(action: str, **params) -> Any:
-    """
-    Send a request to AnkiConnect API.
+def send_request(action: str, **params: Any) -> Any:
+    """Send an AnkiConnect version-6 request using raw wire parameters.
 
     Args:
-        action: The action to perform
-        **params: Additional parameters for the action
+        action: AnkiConnect action name, such as ``findNotes`` or ``addNote``.
+        **params: Action-specific JSON-compatible parameters.
 
     Returns:
-        The result from the API response
+        The action's raw result, or None when result is absent or null. Callers
+        at the Anki boundary interpret or validate action-specific responses.
 
     Raises:
-        Exception: If the response contains an error or connection fails
+        Exception: AnkiConnect reports an action error, or the HTTP request
+            fails. Connection errors include guidance for starting Anki.
     """
     payload = {"action": action, "version": 6, "params": params}
 
@@ -96,29 +57,35 @@ def send_request(action: str, **params) -> Any:
         )
 
 
-def update_note(card_id: int, fields: dict) -> None:
-    """
-    Edit a note in Anki.
+def update_note(card_id: int | None, fields: dict[str, str]) -> Any:
+    """Send a partial field update for an existing note.
 
     Args:
-        card_id: The ID of the card to edit (notes and cards share same ID thankfully)
-        fields: List of field names to edit
-        new_values: List of new values for the fields
-    """
+        card_id: Historical parameter name for a note ID, not a card ID.
+            Missing IDs are passed through to AnkiConnect without validation.
+        fields: Exact Anki field names mapped to replacement content.
+            Fields not present in this mapping remain unchanged.
 
-    response = send_request("updateNote", note={"id": card_id, "fields": fields})
-    return response
+    Returns:
+        The raw updateNote result, normally None on success.
+
+    Raises:
+        Exception: AnkiConnect rejects the update or cannot be reached.
+    """
+    return send_request("updateNote", note={"id": card_id, "fields": fields})
 
 
 def _get_card_info(card_id: int) -> Dict[str, Any]:
-    """
-    Get detailed information about a specific card.
+    """Read exactly one raw cardsInfo record.
 
     Args:
-        card_id: The ID of the card
+        card_id: Card ID to look up, not the owning note's ID.
 
     Returns:
-        Dictionary with card information or None if the card couldn't be found
+        The sole card response, ready for model-specific validation.
+
+    Raises:
+        Exception: AnkiConnect fails, or returns zero or multiple cards.
     """
 
     response: list = send_request("cardsInfo", cards=[card_id])
@@ -131,14 +98,17 @@ def _get_card_info(card_id: int) -> Dict[str, Any]:
 
 
 def get_kanji_card_info(card_id: int) -> KanjiCard:
-    """
-    Get detailed information about a specific card.
+    """Read and validate one card from the supported kanji note type.
 
     Args:
-        card_id: The ID of the card
+        card_id: Card ID to look up, not the owning note's ID.
 
     Returns:
-        Dictionary with card information or None if the card couldn't be found
+        A KanjiCard with typed note fields and separate card and note IDs.
+
+    Raises:
+        Exception: AnkiConnect fails or does not return exactly one card.
+        pydantic.ValidationError: The response does not match KanjiCard.
     """
 
     card_info = _get_card_info(card_id)
@@ -147,18 +117,21 @@ def get_kanji_card_info(card_id: int) -> KanjiCard:
 
 # High Level
 def get_current_card() -> Optional[KanjiCard]:
-    """
-    Get information about the current card being reviewed.
+    """Read the reviewer's current card as a supported kanji card.
 
     Returns:
-        The current KanjiCard, or None if no card is being reviewed
+        The validated card, or None if guiCurrentCard supplies no card ID.
+
+    Raises:
+        Exception: AnkiConnect fails or the referenced card cannot be read.
+        pydantic.ValidationError: The current card is not a supported kanji card.
     """
 
     result = send_request("guiCurrentCard")
     if result is None or "cardId" not in result:
         return None
 
-    # Get card info to extract the front field (Kanji)
+    # Validate the note fields using the supported kanji-card schema.
     card_info = get_kanji_card_info(result["cardId"])
     if not card_info:
         return None
@@ -167,14 +140,16 @@ def get_current_card() -> Optional[KanjiCard]:
 
 
 def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
-    """
-    Extract kanji characters from a list of cards.
+    """Extract leading kanji from front-like fields in raw card records.
 
     Args:
-        cards: List of card information dictionaries
+        cards: AnkiConnect card records. The first field whose name contains
+            ``front`` case-insensitively is used for each card.
 
     Returns:
-        List of kanji characters
+        Leading kanji in input order, retaining duplicates. Missing, blank or
+        non-kanji-leading front fields contribute no character. This legacy
+        front-field reader is separate from the configured Kanji inventory.
     """
     kanji_list = []
 
@@ -193,14 +168,32 @@ def extract_kanji_from_cards(cards: List[Dict[str, Any]]) -> List[str]:
 
 
 def find_kanji_card_ids(kanji: str) -> List[int]:
-    """Find all matching card IDs in the configured kanji deck."""
+    """Find all matching cards, including duplicates, in the kanji deck.
+
+    Args:
+        kanji: Kanji field value to place in the exact existing search query.
+
+    Returns:
+        Matching card IDs in AnkiConnect order, or an empty list if none match.
+
+    Raises:
+        Exception: Configuration or the AnkiConnect search cannot be loaded.
+    """
     kanji_deck = get_config().kanji_deck.name
     query = f'deck:"{kanji_deck}" "Kanji:{kanji}"'
     return send_request("findCards", query=query) or []
 
 
 def find_kanji_card_id(kanji: str) -> Optional[int]:
-    """Find the first matching card ID in the configured kanji deck."""
+    """Find one matching kanji card using the best-effort CLI contract.
+
+    Args:
+        kanji: Kanji field value to search for in the configured kanji deck.
+
+    Returns:
+        The first matching card ID, or None when absent or loading fails.
+        Loading failures also print a warning for the interactive caller.
+    """
     try:
         card_ids = find_kanji_card_ids(kanji)
         return card_ids[0] if card_ids else None
@@ -211,10 +204,19 @@ def find_kanji_card_id(kanji: str) -> Optional[int]:
 
 
 def get_kanji_review_status(kanji: str) -> KanjiReviewStatus:
-    """Return whether any matching kanji card has been reviewed at least once.
+    """Determine review status from every matching kanji card.
 
-    Errors intentionally propagate so the CLI can distinguish an unavailable
-    Anki connection from a kanji that is genuinely absent from the deck.
+    Args:
+        kanji: Kanji field value to search for in the configured kanji deck.
+
+    Returns:
+        NOT_IN_DECK when absent, REVIEWED when any matching card has reps > 0,
+        or NOT_REVIEWED otherwise. Unlike the knowledge inventory, this check
+        does not count a flagged new card as reviewed solely because of its flag.
+
+    Raises:
+        Exception: AnkiConnect cannot search or read the matching cards.
+            Failures propagate rather than masquerading as an absent kanji.
     """
     card_ids = find_kanji_card_ids(kanji)
     if not card_ids:
@@ -227,11 +229,13 @@ def get_kanji_review_status(kanji: str) -> KanjiReviewStatus:
 
 
 def reposition_card_to_top(card_id: int) -> None:
-    """
-    Reposition an Anki card to the top of its review queue (odue = 0).
+    """Set a card's due value to zero using the existing queue workaround.
 
     Args:
-        card_id: The ID of the card to reposition.
+        card_id: Card ID to reposition, not the owning note ID.
+
+    Raises:
+        Exception: The scheduling update fails; the error includes card_id.
     """
     try:
         # The 'due' field controls position (new cards) or day due (review cards).
@@ -241,24 +245,20 @@ def reposition_card_to_top(card_id: int) -> None:
         raise Exception(f"Failed to reposition card {card_id}: {str(e)}")
 
 
-def _update_furigana_classes(front_html: str, reviewed_kanji: Set[str]) -> Tuple[str, bool]:
-    """Update ruby visibility, migrating legacy Anki furigana when needed."""
-    if re.search(r"[\u4e00-\u9fff]\[", front_html):
-        def migrate(match: re.Match[str]) -> str:
-            return f"<ruby>{match.group(1)}<rt>{match.group(2)}</rt></ruby>"
-
-        migrated = re.sub(
-            r"([\u4e00-\u9fff])\[([^\]]+)\]", migrate, front_html
-        )
-        migrated = re.sub(r"([\u3040-\u309f]) ", r"\1", migrated)
-        updated, _ = update_furigana_visibility(migrated, reviewed_kanji)
-        return updated, True
-
-    return update_furigana_visibility(front_html, reviewed_kanji)
-
-
 def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
-    """Create an Anki note from a word dictionary"""
+    """Build a legacy note payload after fetching its target-word furigana.
+
+    Args:
+        word: Vocabulary entry with at least one English definition.
+        reviewed_kanji: Kanji whose ruby readings should be hidden on the front.
+
+    Returns:
+        The eight-field legacy AnkiConnect note payload, including tags and
+        duplicate options but excluding the destination deck name.
+
+    Raises:
+        Exception: Fetching or rendering the target-word furigana fails.
+    """
 
     # Format the front with furigana HTML
     front = fetch_jisho_word_furigana(word.expression, reviewed_kanji)
@@ -284,280 +284,23 @@ def prepare_note(word: JishoWord, reviewed_kanji: Set[str]) -> Dict[str, Any]:
     }
 
 
-def prepare_note_v2(
-    item: PendingVocabItem,
-    japanese_definition: JapaneseDefinition,
-    front: str,
-    japanese_cue: str,
-) -> Dict[str, Any]:
-    """Serialize fetched and rendered vocabulary data into a V2 Anki note.
-
-    Args:
-        item: Pending word with its recall preference.
-        japanese_definition: Normalized definition and Kotobank provenance.
-        front: Pre-rendered target word with review-dependent furigana.
-        japanese_cue: Pre-rendered Japanese definition cue.
-
-    Returns:
-        A deterministic thirteen-field AnkiConnect note payload without a deck.
-    """
-    word = item.word
-    fields = VOCAB_V2_FIELDS
-    return {
-        "modelName": VOCAB_NOTE_TYPE_V2,
-        "fields": {
-            fields["front"]: front,
-            fields["back"]: word.definitions[0],
-            fields["expression"]: word.expression,
-            fields["kana_reading"]: word.kana,
-            fields["grammar"]: (
-                word.parts_of_speech[0] if word.parts_of_speech else ""
-            ),
-            fields["definition"]: word.definitions[0],
-            fields["additional_definitions"]: "\n".join(word.definitions[1:]),
-            fields["jlpt"]: f"JLPT N{word.jlpt}" if word.jlpt else "",
-            fields["japanese_definition"]: "\n".join(japanese_definition.senses),
-            fields["japanese_cue"]: japanese_cue,
-            fields["recall"]: "1" if item.recall_enabled else "",
-            fields["definition_source"]: japanese_definition.source_name,
-            fields["definition_url"]: japanese_definition.source_url,
-        },
-        "tags": [VOCAB_TAG],
-        "options": {"allowDuplicate": False},
-    }
-
-
-def _render_plain_text(value: str) -> str:
-    """Escape model-generated plain text and preserve line breaks safely."""
-    return escape(value).replace("\n", "<br>")
-
-
-def prepare_note_v3(
-    item: PendingVocabItem,
-    japanese_definition: JapaneseDefinition,
-    front: str,
-    japanese_cue: str,
-    enrichment: VocabEnrichment,
-) -> Dict[str, Any]:
-    """Serialize prepared V2 data and validated enrichment into a V3 note."""
-    note = prepare_note_v2(item, japanese_definition, front, japanese_cue)
-    note["modelName"] = VOCAB_NOTE_TYPE_V3
-    note["fields"] = {
-        **note["fields"],
-        VOCAB_V3_FIELDS["nuance"]: _render_plain_text(enrichment.nuance),
-        VOCAB_V3_FIELDS["example"]: render_example(enrichment).replace(
-            "\n", "<br>"
-        ),
-        VOCAB_V3_FIELDS["kanji_explanation"]: _render_plain_text(
-            enrichment.kanji_explanation
-        ),
-    }
-    return note
-
-
-@dataclass(frozen=True)
-class _PreparedVocabItem:
-    """Carry one reviewed row and its deterministic pre-enrichment data."""
-
-    index: int
-    item: PendingVocabItem
-    definition: JapaneseDefinition
-    front: str
-    japanese_cue: str
-
-
-def add_vocab_items(
-    items: List[PendingVocabItem],
-    client: Optional[KotobankClient] = None,
-    enrichment_client: Optional[DeepSeekEnrichmentClient] = None,
-    on_progress: Optional[CommitProgressCallback] = None,
-    config: Optional[AppConfig] = None,
-) -> BatchAddResult:
-    """Commit included vocabulary through ordered preparation and write phases.
-
-    Duplicate classification and deterministic dictionary/furigana preparation
-    happen before bounded concurrent enrichment. Successful V3 notes are then
-    serialized and written to Anki sequentially in the original reviewed order.
-
-    A supplied enrichment client is treated as the provider dependency (and is
-    useful for isolated tests). Otherwise the environment-only API key and the
-    configured prompt path are used to construct the production client.
-    """
-    total = len(items)
-    completed = 0
-    added: List[Tuple[int, PendingVocabItem]] = []
-    duplicates: List[Tuple[int, PendingVocabItem]] = []
-    failures: List[Tuple[int, AddFailure]] = []
-
-    def emit_progress(
-        phase: CommitPhase,
-        item: Optional[PendingVocabItem] = None,
-        outcome: Optional[CommitTerminalOutcome] = None,
-    ) -> None:
-        nonlocal completed
-        if outcome is not None:
-            completed += 1
-        if on_progress is not None:
-            on_progress(
-                CommitProgressEvent(
-                    phase=phase,
-                    completed=completed,
-                    total=total,
-                    item=item,
-                    outcome=outcome,
-                )
-            )
-
-    def build_result() -> BatchAddResult:
-        return BatchAddResult(
-            added=[item for _, item in sorted(added)],
-            failed=[failure for _, failure in sorted(failures)],
-            skipped_duplicates=[item for _, item in sorted(duplicates)],
-        )
-
-    emit_progress("duplicate")
-    existing_expressions = get_vocab_expressions()
-    eligible: List[Tuple[int, PendingVocabItem]] = []
-    for index, item in enumerate(items):
-        if item.word.expression in existing_expressions:
-            duplicates.append((index, item))
-            emit_progress("duplicate", item, "duplicate")
-        else:
-            eligible.append((index, item))
-
-    if not eligible:
-        return build_result()
-
-    app_config = config or get_config()
-    if enrichment_client is None:
-        api_key = get_llm_api_key()
-        if api_key is None:
-            message = (
-                "Missing KANJI_VOCAB_MINER_LLM__API_KEY; set it before "
-                "committing vocabulary."
-            )
-            for index, item in eligible:
-                failures.append(
-                    (index, AddFailure(item, "enrichment", message))
-                )
-                emit_progress("enrichment", item, "failed")
-            return build_result()
-        enrichment_client = DeepSeekEnrichmentClient(
-            api_key=api_key,
-            prompt_path=resolve_prompt_path(app_config.llm.prompt_path),
-        )
-
-    reviewed_kanji = get_reviewed_kanji()
-    kotobank_client = client or KotobankClient()
-    prepared_items: List[_PreparedVocabItem] = []
-    for index, item in eligible:
-        expression = item.word.expression
-        emit_progress("definition", item)
-        try:
-            definition = kotobank_client.lookup(expression)
-        except Exception as error:
-            failures.append(
-                (index, AddFailure(item, "definition", str(error)))
-            )
-            emit_progress("definition", item, "failed")
-            continue
-
-        emit_progress("furigana", item)
-        try:
-            front = fetch_jisho_word_furigana(expression, reviewed_kanji)
-            japanese_cue = render_japanese_cue(
-                definition.senses, reviewed_kanji
-            )
-        except Exception as error:
-            failures.append((index, AddFailure(item, "furigana", str(error))))
-            emit_progress("furigana", item, "failed")
-            continue
-
-        prepared_items.append(
-            _PreparedVocabItem(
-                index=index,
-                item=item,
-                definition=definition,
-                front=front,
-                japanese_cue=japanese_cue,
-            )
-        )
-
-    if not prepared_items:
-        return build_result()
-
-    emit_progress("enrichment")
-    enrichment_outcomes = generate_enrichments(
-        [prepared.item for prepared in prepared_items],
-        enrichment_client,
-        max_workers=app_config.llm.concurrency,
-        on_complete=lambda item: emit_progress("enrichment", item),
-    )
-
-    enriched_items: List[Tuple[_PreparedVocabItem, VocabEnrichment]] = []
-    for prepared, outcome in zip(prepared_items, enrichment_outcomes):
-        if outcome.enrichment is None:
-            message = str(outcome.error or "Unknown enrichment failure")
-            failures.append(
-                (
-                    prepared.index,
-                    AddFailure(prepared.item, "enrichment", message),
-                )
-            )
-            emit_progress("enrichment", prepared.item, "failed")
-        else:
-            enriched_items.append((prepared, outcome.enrichment))
-
-    for prepared, enrichment in enriched_items:
-        emit_progress("furigana", prepared.item)
-        try:
-            note = prepare_note_v3(
-                prepared.item,
-                prepared.definition,
-                prepared.front,
-                prepared.japanese_cue,
-                enrichment,
-            )
-        except Exception as error:
-            failures.append(
-                (
-                    prepared.index,
-                    AddFailure(prepared.item, "furigana", str(error)),
-                )
-            )
-            emit_progress("furigana", prepared.item, "failed")
-            continue
-
-        emit_progress("anki", prepared.item)
-        try:
-            send_request(
-                "addNote", note=note | {"deckName": VOCAB_DECK_NAME}
-            )
-        except Exception as error:
-            failures.append(
-                (prepared.index, AddFailure(prepared.item, "anki", str(error)))
-            )
-            emit_progress("anki", prepared.item, "failed")
-            continue
-
-        added.append((prepared.index, prepared.item))
-        emit_progress("anki", prepared.item, "added")
-
-    return build_result()
-
-
 def add_vocab_note_to_deck(
-    selected_words: List[JishoWord], deckname: str = None, reviewed_kanji: Set[str] = None
+    selected_words: List[JishoWord],
+    deckname: Optional[str] = None,
+    reviewed_kanji: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Add selected words to the vocabulary Anki deck.
-    Handles duplicate notes by skipping them and continuing with others.
+    """Add legacy vocabulary notes independently, reporting a printed summary.
+
+    Preparation and write failures are isolated per word. Duplicate notes are
+    counted and skipped; other failures print their expression and error. This
+    compatibility workflow does not perform the current V3 commit orchestration.
 
     Args:
-        selected_words: List of word dictionaries containing word, reading, and definitions
-
-    Returns:
-        None
+        selected_words: Vocabulary entries in add order. An empty list performs
+            no work and prints no summary.
+        deckname: Destination deck, or None to use the vocabulary deck constant.
+        reviewed_kanji: Kanji whose ruby readings should be hidden. None means
+            empty knowledge; this helper does not load a kanji inventory.
     """
     if not selected_words:
         return
@@ -594,43 +337,49 @@ def add_vocab_note_to_deck(
         print("No notes were added.")
 
 
-def get_reviewed_kanji(*, should_raise: bool = False) -> Set[str]:
-    """
-    Get the set of Kanji that have been reviewed in the configured kanji deck.
+def _load_kanji_values(query: str) -> set[str]:
+    """Read stored Kanji field values without normalizing collection content.
 
     Args:
-        should_raise: Propagate loading errors instead of returning an empty set.
-            Reader callers use this to distinguish unavailable data from no known kanji.
+        query: Complete AnkiConnect card search query.
 
     Returns:
-        A set of reviewed Kanji characters
+        Distinct Kanji field values. Missing Kanji fields are skipped, while
+        other malformed records remain errors for the calling policy to handle.
+    """
+    card_ids = send_request("findCards", query=query)
+    if not card_ids:
+        return set()
+    cards = send_request("cardsInfo", cards=card_ids)
+    return {
+        card["fields"]["Kanji"]["value"]
+        for card in cards
+        if "fields" in card and "Kanji" in card["fields"]
+    }
+
+
+def get_reviewed_kanji(*, should_raise: bool = False) -> Set[str]:
+    """Load the kanji knowledge inventory from the configured deck.
+
+    Non-new cards and flag:1 cards qualify, including explicitly flagged new
+    cards. Stored Kanji values are neither trimmed nor split into characters.
+
+    Args:
+        should_raise: Propagate loading errors for strict consumers such as the
+            reader. Otherwise print a warning and return an empty set on error.
+
+    Returns:
+        Distinct qualifying Kanji field values; empty when there are no matches
+        or a best-effort load fails.
 
     Raises:
-        Exception: If the operation fails
+        Exception: Loading or record interpretation fails and should_raise is
+            True. The original exception is preserved.
     """
-    reviewed_kanji = set()
-
     try:
-        # Get card IDs of reviewed cards in the Kanji deck
-        # TODO: Remove the flag bit from this later as this is really just for me!
         kanji_deck = get_config().kanji_deck.name
-        card_ids = send_request(
-            "findCards", query=f'deck:"{kanji_deck}" (-is:new OR flag:1)'
-        )
-
-        if not card_ids:
-            return reviewed_kanji
-
-        # Get card info for each card
-        cards_info = send_request("cardsInfo", cards=card_ids)
-
-        # Extract Kanji from the Kanji field of each card (updated from Front to Kanji)
-        for card in cards_info:
-            if "fields" in card and "Kanji" in card["fields"]:
-                kanji = card["fields"]["Kanji"]["value"]
-                reviewed_kanji.add(kanji)
-
-        return reviewed_kanji
+        # The knowledge inventory also includes explicitly flagged new cards.
+        return _load_kanji_values(f'deck:"{kanji_deck}" (-is:new OR flag:1)')
     except Exception as e:
         if should_raise:
             raise
@@ -640,26 +389,16 @@ def get_reviewed_kanji(*, should_raise: bool = False) -> Set[str]:
 
 
 def get_all_kanji() -> Set[str]:
-    """
-    Get every Kanji present in the configured kanji deck, regardless of whether
-    the card has been reviewed. Used as the denominator for "Jouyou kanji not
-    yet in your deck".
+    """Load the deck's kanji inventory independently of review state.
 
     Returns:
-        A set of all Kanji characters in the deck (empty set on failure).
+        Distinct, unnormalized Kanji field values from every card in the deck.
+        Loading failures print a warning and return an empty set. This inventory
+        is the denominator for kanji coverage, not a measure of knowledge.
     """
-    all_kanji: Set[str] = set()
     try:
         kanji_deck = get_config().kanji_deck.name
-        card_ids = send_request("findCards", query=f'deck:"{kanji_deck}"')
-        if not card_ids:
-            return all_kanji
-
-        cards_info = send_request("cardsInfo", cards=card_ids)
-        for card in cards_info:
-            if "fields" in card and "Kanji" in card["fields"]:
-                all_kanji.add(card["fields"]["Kanji"]["value"])
-        return all_kanji
+        return _load_kanji_values(f'deck:"{kanji_deck}"')
     except Exception as e:
         print(f"Warning: Failed to get all Kanji: {str(e)}")
         return set()
@@ -671,6 +410,16 @@ def count_vocab_notes_added_since(start_date: date) -> int:
     Anki note IDs encode their creation time in Unix milliseconds. Comparing
     their local creation date keeps the counter aligned with the date in the
     manual progress file and counts notes regardless of review state.
+
+    Args:
+        start_date: Inclusive creation-date boundary in the local time zone.
+
+    Returns:
+        The number of distinct vocabulary note IDs meeting the date boundary,
+        regardless of card count, model version or review state.
+
+    Raises:
+        Exception: AnkiConnect cannot read the note inventory.
     """
     note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"')
     return sum(
@@ -680,13 +429,18 @@ def count_vocab_notes_added_since(start_date: date) -> int:
 
 
 def get_vocab_expressions() -> Set[str]:
-    """Read unique vocabulary identities at note level across both models.
+    """Read unique vocabulary identities across legacy, V2 and V3 notes.
 
-    Notes without a usable Expression field are ignored, allowing legacy and
-    V2 notes to coexist with unrelated or malformed historical deck content.
+    Notes without a usable Expression field are ignored, allowing vocabulary
+    notes to coexist with unrelated or malformed historical deck content.
 
     Returns:
-        The deduplicated nonblank Expression values in the vocabulary deck.
+        The deduplicated, trimmed, nonblank Expression values in the vocabulary
+        deck, across legacy, V2, V3 and other notes with compatible fields.
+
+    Raises:
+        Exception: Inventory loading or record interpretation fails. This
+            strict path never substitutes empty knowledge for a loading error.
     """
     note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"') or []
     if not note_ids:
@@ -706,60 +460,15 @@ def get_vocab_expressions() -> Set[str]:
 
 
 def get_reviewed_vocab() -> List[str]:
-    """Return every vocabulary expression through the note-level read path."""
+    """Load all vocabulary identities using the best-effort legacy contract.
+
+    Returns:
+        Sorted, unique expressions regardless of review state. Despite the
+        historical name, no reviewed-card filter is applied. Failures print a
+        warning and return an empty list.
+    """
     try:
         return sorted(get_vocab_expressions())
     except Exception as error:
         print(f"Warning: Failed to get reviewed Vocab: {str(error)}")
         return []
-
-
-def sync_vocab_furigana() -> int:
-    """Update review-dependent furigana once per vocabulary note.
-
-    Front is updated for compatible legacy and V2 notes. JapaneseCue is also
-    updated when present, while JapaneseDefinition remains unchanged. All
-    changed fields for one note are sent in a single AnkiConnect update.
-
-    Returns:
-        The number of notes successfully updated.
-    """
-    reviewed_kanji = get_reviewed_kanji()
-    try:
-        note_ids = send_request("findNotes", query=f'deck:"{VOCAB_DECK_NAME}"') or []
-        notes = send_request("notesInfo", notes=note_ids) if note_ids else []
-    except Exception:
-        return 0
-
-    updated_count = 0
-    for note in notes:
-        note_id = note.get("noteId") or note.get("note")
-        fields = note.get("fields", {})
-        updated_fields: Dict[str, str] = {}
-
-        front = fields.get("Front", {}).get("value", "")
-        if front:
-            updated_front, front_changed = _update_furigana_classes(
-                front, reviewed_kanji
-            )
-            if front_changed:
-                updated_fields["Front"] = updated_front
-
-        japanese_cue = fields.get("JapaneseCue", {}).get("value", "")
-        if japanese_cue:
-            updated_cue, cue_changed = _update_furigana_classes(
-                japanese_cue, reviewed_kanji
-            )
-            if cue_changed:
-                updated_fields["JapaneseCue"] = updated_cue
-
-        if not updated_fields:
-            continue
-
-        try:
-            update_note(note_id, updated_fields)
-            updated_count += 1
-        except Exception as error:
-            print(f"Warning: Failed to update note {note_id}: {error}")
-
-    return updated_count

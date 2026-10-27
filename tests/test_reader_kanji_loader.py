@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 
+from kanji_vocab_miner import config
 from kanji_vocab_miner.anki import connect
 
 
@@ -12,7 +13,7 @@ def test_reader_can_request_strict_kanji_loading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        connect,
+        config,
         "_config",
         SimpleNamespace(
             kanji_deck=SimpleNamespace(name="Kanji"),

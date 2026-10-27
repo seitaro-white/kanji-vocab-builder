@@ -24,9 +24,10 @@ import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from kanji_vocab_miner.anki.connect import send_request, update_note, sync_vocab_furigana
-from kanji_vocab_miner.config import VOCAB_DECK_NAME, FIELDS
-from kanji_vocab_miner.jisho import fetch_jisho_word_furigana, JishoWord
+from kanji_vocab_miner.anki.connect import send_request, update_note
+from kanji_vocab_miner.anki.furigana_sync import sync_vocab_furigana
+from kanji_vocab_miner.anki.note_types import FIELDS, VOCAB_DECK_NAME
+from kanji_vocab_miner.jisho import JishoWord, fetch_jisho_word_furigana
 
 # ---------------------------------------------------------------------------
 # Pattern detection

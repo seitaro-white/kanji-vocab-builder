@@ -3,13 +3,14 @@
 import sys
 
 from kanji_vocab_miner.anki import connect
+from kanji_vocab_miner.config import get_config
 from kanji_vocab_miner.jouyou_data import BY_GRADE
 
 
 def main() -> int:
     """Query AnkiConnect and print the unreviewed Kyōiku kanji."""
     kyouiku = "".join(BY_GRADE[grade] for grade in range(1, 7))
-    deck_name = connect.get_config().kanji_deck.name
+    deck_name = get_config().kanji_deck.name
 
     try:
         card_ids = connect.send_request("findCards", query=f'deck:"{deck_name}"')
