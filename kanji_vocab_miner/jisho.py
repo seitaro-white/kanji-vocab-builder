@@ -184,6 +184,9 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
     """
     Search for words containing the given Kanji character using the Jisho API.
 
+    Use the first Japanese form containing the target kanji and its reading,
+    returning at most one word per dictionary entry.
+
     Args:
         kanji: The Kanji character to search for
 
@@ -214,14 +217,20 @@ def search_words_containing_kanji(kanji: str) -> List[JishoWord]:
         if "japanese" not in item or not item["japanese"]:
             continue
 
-        # Extract word and reading
-        japanese_data = item["japanese"][0]
+        # A matching spelling may follow a kana-only or alternative form.
+        japanese_data = next(
+            (
+                form
+                for form in item["japanese"]
+                if kanji in form.get("word", form.get("reading", ""))
+            ),
+            None,
+        )
+        if japanese_data is None:
+            continue
+
         word = japanese_data.get("word", japanese_data.get("reading", ""))
         reading = japanese_data.get("reading", "")
-
-        # Skip if the target Kanji isn't in the word
-        if kanji not in word:
-            continue
 
         # Extract JLPT level
         jlpt_data = item.get("jlpt", [])

@@ -10,6 +10,11 @@ The tool allows for searching of either specific kanji or words.
 - When a word is searched, it will look up the word on Jisho, display its details, and allow you to add it to your Anki vocabulary deck.
 - When a kanji is searched, it will first look up the Kanji on Jisho, then fetch a list of vocabulary words that include that kanji, with details including JLPT level, whether the word already exists in your Anki deck and whether the other kanji in the word are already in your list of reviewed kanji. You can then select which words to add to your Anki vocabulary deck.
 
+Kanji searches check all spellings supplied for each Jisho entry and display the
+first spelling containing the searched kanji, with its corresponding reading.
+For example, searching `眼` includes `眼鏡` even when Jisho lists `メガネ` first.
+Each dictionary entry contributes at most one result.
+
 The workflow is designed to complement kanji study: as you learn new kanji, you naturally build vocabulary that reinforces those characters.
 
 ## Who is it for?
