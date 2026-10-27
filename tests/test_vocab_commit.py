@@ -3,21 +3,23 @@
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import create_autospec
 
 import pytest
 
 from kanji_vocab_miner import config as config_module
-from kanji_vocab_miner import vocab_commit
+from kanji_vocab_miner import jisho, vocab_commit
 from kanji_vocab_miner.anki import connect
 from kanji_vocab_miner.anki.note_types import VOCAB_DECK_NAME
 from kanji_vocab_miner.config import AppConfig
 from kanji_vocab_miner.enrichment import (
+    DeepSeekEnrichmentClient,
     EnrichmentError,
     EnrichmentOutcome,
     VocabEnrichment,
 )
 from kanji_vocab_miner.jisho import JishoWord
-from kanji_vocab_miner.kotobank import JapaneseDefinition
+from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.vocab_models import PendingVocabItem
 
 
@@ -105,6 +107,51 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
     assert added_notes[1]["fields"]["Recall"] == "1"
     assert all(note["deckName"] == VOCAB_DECK_NAME for note in added_notes)
     assert all(note["modelName"] == "MyJapaneseVocabularyV3" for note in added_notes)
+
+
+def test_add_vocab_items_preserves_alternate_spelling_through_real_furigana(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Commit 眼鏡 without mocking away the Jisho HTML parsing regression."""
+    item = PendingVocabItem(
+        JishoWord(expression="眼鏡", kana="めがね", jlpt=5, definitions=["glasses"])
+    )
+    html = (Path(__file__).parent / "fixtures" / "jisho_megane.html").read_text(
+        encoding="utf-8"
+    )
+    notes: list[dict[str, Any]] = []
+    monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
+    monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: {"眼"})
+
+    def fetch_page(url: str) -> SimpleNamespace:
+        assert url == "https://jisho.org/word/眼鏡"
+        return SimpleNamespace(text=html, raise_for_status=lambda: None)
+
+    def capture_note(action: str, **params: Any) -> int:
+        assert action == "addNote"
+        notes.append(params["note"])
+        return 123
+
+    monkeypatch.setattr(jisho.requests, "get", fetch_page)
+    monkeypatch.setattr(connect, "send_request", capture_note)
+    definition_client = create_autospec(KotobankClient, instance=True)
+    definition_client.lookup.side_effect = _definition
+    enrichment_client = create_autospec(DeepSeekEnrichmentClient, instance=True)
+    enrichment_client.generate.return_value = _enrichment("眼鏡")
+    result = vocab_commit.add_vocab_items(
+        [item],
+        definition_client=definition_client,
+        enrichment_client=enrichment_client,
+        config=_config(),
+    )
+
+    assert result.added == [item]
+    assert result.failed == []
+    assert result.skipped_duplicates == []
+    assert len(notes) == 1
+    assert notes[0]["fields"]["Expression"] == "眼鏡"
+    assert notes[0]["fields"]["Front"] == "<ruby>眼鏡<rt>めがね</rt></ruby>"
+    assert notes[0]["deckName"] == VOCAB_DECK_NAME
 
 
 def test_add_vocab_items_prepares_native_sudachi_cue_with_mocked_io(

@@ -1,3 +1,5 @@
+from html import escape
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,10 +9,10 @@ from kanji_vocab_miner import jisho
 
 def _make_furigana_response(characters: str, furigana: list[str]) -> MagicMock:
     """Build a mock requests.Response whose HTML looks like a Jisho word page."""
-    kanji_spans = "".join(f'<span class="kanji">{f}</span>' for f in furigana)
+    kanji_spans = "".join(f'<span class="kanji">{escape(f)}</span>' for f in furigana)
     html = f"""
     <div class="concept_light-representation">
-        <span class="text">{characters}</span>
+        <span class="text">{escape(characters)}</span>
         {kanji_spans}
     </div>
     """
@@ -184,8 +186,86 @@ def test_search_skips_entries_without_matching_forms(item: dict[str, object]) ->
 
 
 @pytest.mark.parametrize(
+    "reviewed_kanji, expected",
+    [
+        (set(), "<ruby>眼鏡<rt>めがね</rt></ruby>"),
+        ({"眼"}, "<ruby>眼鏡<rt>めがね</rt></ruby>"),
+        ({"眼", "鏡"}, '<ruby>眼鏡<rt class="known">めがね</rt></ruby>'),
+    ],
+)
+def test_furigana_preserves_requested_spelling_from_other_forms(
+    reviewed_kanji: set[str], expected: str
+) -> None:
+    """Jisho's 眼鏡 page displays メガネ first, without any ruby spans."""
+    response = MagicMock()
+    response.text = (
+        Path(__file__).parent / "fixtures" / "jisho_megane.html"
+    ).read_text(encoding="utf-8")
+
+    with patch("kanji_vocab_miner.jisho.requests.get", return_value=response):
+        result = jisho.fetch_jisho_word_furigana("眼鏡", reviewed_kanji)
+
+    assert result == expected
+
+
+def test_furigana_reports_http_failure_with_requested_word() -> None:
+    response = _make_furigana_response("メガネ", [])
+    response.raise_for_status.side_effect = jisho.requests.HTTPError("404 Not Found")
+
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", return_value=response),
+        pytest.raises(
+            jisho.requests.RequestException,
+            match="Failed to fetch furigana for '眼鏡'",
+        ),
+    ):
+        jisho.fetch_jisho_word_furigana("眼鏡", set())
+
+
+@pytest.mark.parametrize(
+    "html", ["<html></html>", '<div class="concept_light-representation"></div>']
+)
+def test_furigana_reports_missing_word_representation(html: str) -> None:
+    response = MagicMock(text=html)
+
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", return_value=response),
+        pytest.raises(ValueError, match="no word representation for '眼鏡'"),
+    ):
+        jisho.fetch_jisho_word_furigana("眼鏡", set())
+
+
+def test_furigana_does_not_substitute_an_unrelated_spelling() -> None:
+    response = _make_furigana_response("メガネ", [])
+    response.text += """
+    <span class="meaning-meaning">
+        <span class="break-unit">眼鏡違い 【めがねちがい】</span>
+    </span>
+    """
+
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", return_value=response),
+        pytest.raises(ValueError, match="lists no reading for the requested spelling"),
+    ):
+        jisho.fetch_jisho_word_furigana("眼鏡", set())
+
+
+@pytest.mark.parametrize(
     "characters, furigana, reviewed_kanji, expected",
     [
+        ("メガネ", [], set(), "メガネ"),
+        (
+            "缶コーヒー",
+            ["かん"],
+            {"缶"},
+            '<ruby>缶<rt class="known">かん</rt></ruby>コーヒー',
+        ),
+        (
+            "<学校&>",
+            ["がっ", "こう"],
+            set(),
+            "&lt;<ruby>学<rt>がっ</rt></ruby><ruby>校<rt>こう</rt></ruby>&amp;&gt;",
+        ),
         (
             "お風呂",
             ["ふ", "ろ"],

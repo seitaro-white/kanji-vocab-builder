@@ -1,11 +1,15 @@
 # %%
 # Imports
-import requests
+import re
 import urllib.parse
+from html import escape
 from typing import Any, Dict, List, Optional, Set
 
+import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
+
+from kanji_vocab_miner.furigana import render_token_furigana
 
 KANJI_DETAIL_SUFFIX = "%23kanji"
 KANJI_BASE_URL = "https://jisho.org/search/"
@@ -60,38 +64,67 @@ def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
 
 
 def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
-    """
-    Fetch the furigana mapping for a given word by scraping the Jisho web page.
+    """Fetch Jisho ruby while preserving the requested dictionary spelling.
 
-    Returns HTML ruby markup with <rt class="known"> for kanji in reviewed_kanji.
-    """
+    Args:
+        word: Exact spelling selected by the caller, including alternate forms.
+        reviewed_kanji: Kanji whose readings should receive rt.known.
 
-    response = requests.get("https://jisho.org/word/" + word)
+    Returns:
+        Ruby HTML using Jisho's per-kanji mapping, or an aligned/grouped reading
+        from its matching Other forms entry when the primary spelling differs.
+
+    Raises:
+        ValueError: The page has no word representation or lists no reading for
+            the requested alternate spelling.
+        requests.RequestException: The HTTP request fails; includes the word.
+    """
+    try:
+        response = requests.get("https://jisho.org/word/" + word)
+        response.raise_for_status()
+    except requests.RequestException as error:
+        raise requests.RequestException(
+            f"Failed to fetch furigana for '{word}': {error}"
+        ) from error
+
     soup = BeautifulSoup(response.text, "html.parser")
 
-    wordhtml = soup.select("div.concept_light-representation")[0].extract()
+    wordhtml = soup.select_one("div.concept_light-representation")
+    text_node = wordhtml.select_one("span.text") if wordhtml is not None else None
+    if wordhtml is None or text_node is None:
+        raise ValueError(f"Jisho returned no word representation for '{word}'.")
 
-    characters = wordhtml.select_one("span.text").text.strip(" \n")
-    furigana = [i.text for i in wordhtml.select("span.kanji")]
+    characters = text_node.get_text().strip(" \n")
+    if characters != word:
+        for form in soup.select(".meaning-meaning .break-unit"):
+            match = re.fullmatch(r"(.+?)\s*【([^】]+)】", form.get_text(strip=True))
+            if match and match.group(1).strip() == word:
+                return render_token_furigana(word, match.group(2), reviewed_kanji)
+        raise ValueError(
+            f"Jisho displays '{characters}' instead of '{word}' and lists no "
+            "reading for the requested spelling."
+        )
+
+    furigana = [escape(i.text) for i in wordhtml.select("span.kanji")]
 
     kanji_chars = [c for c in characters if is_kanji(c)]
 
     # Fallback: apply full furigana to the whole word as one ruby
     if len(furigana) != len(kanji_chars):
-        rt_class = ' class="known"' if all(c in reviewed_kanji for c in kanji_chars) else ''
-        return f'<ruby>{characters}<rt{rt_class}>{"".join(furigana)}</rt></ruby>'
+        rt_class = (
+            ' class="known"' if all(c in reviewed_kanji for c in kanji_chars) else ""
+        )
+        return f'<ruby>{escape(characters)}<rt{rt_class}>{"".join(furigana)}</rt></ruby>'
 
-    # Match each kanji with its furigana; pass hiragana through as-is
+    # Match each kanji with its furigana; preserve other characters as plain text.
     result, furigana_idx = "", 0
     for c in characters:
         if is_kanji(c):
-            rt_class = ' class="known"' if c in reviewed_kanji else ''
+            rt_class = ' class="known"' if c in reviewed_kanji else ""
             result += f'<ruby>{c}<rt{rt_class}>{furigana[furigana_idx]}</rt></ruby>'
             furigana_idx += 1
-        elif is_hiragana(c):
-            result += c
         else:
-            raise Exception(f"Unknown character type: {c}")
+            result += escape(c)
 
     return result
 

@@ -13,7 +13,11 @@ The tool allows for searching of either specific kanji or words.
 Kanji searches check all spellings supplied for each Jisho entry and display the
 first spelling containing the searched kanji, with its corresponding reading.
 For example, searching `眼` includes `眼鏡` even when Jisho lists `メガネ` first.
-Each dictionary entry contributes at most one result.
+Each dictionary entry contributes at most one result. Adding a word preserves that
+selected spelling too: if Jisho's word page displays a different primary spelling,
+the front uses the matching **Other forms** reading (for example, `眼鏡【めがね】`
+rather than replacing it with `メガネ`). Grouped readings stay visible until all
+their kanji are known; kana and other non-kanji text remain plain text.
 
 The workflow is designed to complement kanji study: as you learn new kanji, you naturally build vocabulary that reinforces those characters.
 
