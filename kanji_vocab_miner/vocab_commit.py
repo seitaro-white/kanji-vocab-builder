@@ -18,6 +18,7 @@ from kanji_vocab_miner.enrichment import (
 )
 from kanji_vocab_miner.furigana import render_japanese_cue
 from kanji_vocab_miner.jisho import fetch_jisho_word_furigana
+from kanji_vocab_miner.jmdict import sibling_spellings
 from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.vocab_models import AddFailure, BatchAddResult, PendingVocabItem
 
@@ -50,7 +51,10 @@ def _prepare_item(
     reviewed_kanji: set[str],
 ) -> _PreparedVocabItem | AddFailure:
     try:
-        definition = definition_client.lookup(item.word.expression)
+        definition = definition_client.lookup(
+            item.word.expression,
+            candidate_spellings=sibling_spellings(item.word.expression, item.word.kana),
+        )
     except Exception as error:
         return AddFailure(item, "definition", str(error))
 

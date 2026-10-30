@@ -258,7 +258,11 @@ Japanese-definition-to-Japanese-word card.
 
 The Japanese definition is fetched synchronously from Kotobank for every note,
 including recognition-only notes. Definitions prefer デジタル大辞泉 and fall
-back to 精選版 日本国語大辞典. Results are not cached. The normalized text,
+back to 精選版 日本国語大辞典. If the spelling is missing or has no supported
+article, sibling spellings from bundled JMdict entries matching the selected
+reading are tried (for example, 択ぶ → 選ぶ and 急劇 → 急激). A sibling is accepted
+only when its supported dictionary headword explicitly lists the original spelling;
+missing or ambiguous matches still fail. Results are not cached. The normalized text,
 rendered cue, source name, and canonical source URL are stored on the note.
 DeepSeek generation runs concurrently, while successful notes are written to
 Anki sequentially in the reviewed order. The CLI shows one **Pushing to Anki…**

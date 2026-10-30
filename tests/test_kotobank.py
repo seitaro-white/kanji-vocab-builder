@@ -1,10 +1,13 @@
+from pathlib import Path
 from unittest.mock import MagicMock
+from urllib.parse import quote
 
 import pytest
 import requests
 
 from kanji_vocab_miner.kotobank import (
     JapaneseDefinition,
+    KotobankAmbiguousDefinitionError,
     KotobankClient,
     KotobankDefinitionNotFound,
     KotobankParseError,
@@ -307,6 +310,152 @@ def test_lookup_percent_encodes_kanji_and_kana(
         f"https://kotobank.jp/word/{encoded_expression}",
         timeout=(3.05, 10.0),
     )
+
+
+
+@pytest.mark.parametrize(
+    "expression, siblings, fixture, page_id",
+    [
+        ("択ぶ", ["選ぶ", "撰ぶ"], "選ぶ", "446812"),
+        ("傷み", ["痛み"], "痛み", "31147"),
+        ("劇しい", ["激しい", "烈しい"], "激しい", "600648"),
+        ("急劇", ["急激"], "急激", "476769"),
+    ],
+)
+def test_lookup_verifies_sibling_headwords_from_live_fixtures(
+    expression: str, siblings: list[str], fixture: str, page_id: str
+) -> None:
+    direct = _fixture_response("急劇") if expression == "急劇" else _http_error(404)
+    sibling = _fixture_response(fixture)
+    session = MagicMock()
+    session.get.side_effect = [direct] + [sibling] * len(siblings)
+
+    result = KotobankClient(session=session).lookup(expression, siblings)
+
+    assert result.expression == expression
+    assert result.source_name == "デジタル大辞泉"
+    assert result.source_url.endswith("-" + page_id)
+    expected_openings = {
+        "択ぶ": "［動バ五（四）］１ 多くの中から目的や基準にかなうものを取り出す。",
+        "傷み": "１ 病気や傷などによる肉体的な苦しみ。",
+        "劇しい": "［形］［文］はげ・し［シク］１ 勢いがたいへん強い。",
+        "急劇": "［形動］［文］［ナリ］物事の変化や動きなどが急で、はげしいさま。",
+    }
+    assert result.senses[0].startswith(expected_openings[expression])
+    assert [call.args[0] for call in session.get.call_args_list] == [
+        "https://kotobank.jp/word/" + quote(word, safe="")
+        for word in [expression] + siblings
+    ]
+
+
+@pytest.mark.parametrize(
+    "heading, description",
+    [
+        ("えら・ぶ【選ぶ】", "択ぶと同じ。"),
+        ("えら・ぶ【択】", "意味。"),
+        ("えら・ぶ【択ぶ物】", "意味。"),
+        ("えら・ぶ【択・選】", "意味。"),
+    ],
+)
+def test_sibling_requires_exact_spelling_in_headword(
+    heading: str, description: str
+) -> None:
+    sibling = _definition_response(description)
+    sibling.text = sibling.text.replace(
+        '<section class="description">', f'<h3>{heading}</h3><section class="description">'
+    )
+    session = MagicMock()
+    session.get.side_effect = [_http_error(404), sibling]
+
+    with pytest.raises(KotobankRequestError):
+        KotobankClient(session=session).lookup("択ぶ", ["選ぶ"])
+
+
+@pytest.mark.parametrize("status", [400, 403, 429, 503])
+def test_non_not_found_http_errors_never_try_siblings(status: int) -> None:
+    session = MagicMock()
+    session.get.return_value = _http_error(status)
+
+    with pytest.raises(KotobankRequestError):
+        KotobankClient(session=session).lookup("択ぶ", ["選ぶ"])
+
+    assert session.get.call_count == (2 if status in (429, 503) else 1)
+
+
+def test_direct_success_never_requests_siblings() -> None:
+    session = MagicMock()
+    session.get.return_value = _definition_response("直接の意味。")
+
+    result = KotobankClient(session=session).lookup("択ぶ", ["選ぶ"])
+
+    assert result.senses == ["直接の意味。"]
+    assert session.get.call_count == 1
+
+
+def test_direct_parse_error_does_not_try_siblings() -> None:
+    response = _definition_response("")
+    session = MagicMock()
+    session.get.return_value = response
+
+    with pytest.raises(KotobankParseError):
+        KotobankClient(session=session).lookup("択ぶ", ["選ぶ"])
+
+    assert session.get.call_count == 1
+
+
+def test_distinct_verified_pages_are_rejected_as_ambiguous() -> None:
+    first = _fixture_response("選ぶ")
+    second = _fixture_response("選ぶ")
+    second.text = second.text.replace("446812", "123456")
+    session = MagicMock()
+    session.get.side_effect = [_http_error(404), first, second]
+
+    with pytest.raises(KotobankAmbiguousDefinitionError, match="Ambiguous"):
+        KotobankClient(session=session).lookup("択ぶ", ["選ぶ", "撰ぶ"])
+
+
+def test_missing_siblings_preserve_original_not_found_error() -> None:
+    session = MagicMock()
+    session.get.side_effect = [_fixture_response("急劇"), _http_error(404)]
+
+    with pytest.raises(KotobankDefinitionNotFound) as error:
+        KotobankClient(session=session).lookup("急劇", ["急激"])
+
+    assert error.value.expression == "急劇"
+    assert error.value.url.endswith(quote("急劇"))
+
+
+def test_only_matching_supported_article_can_supply_definition() -> None:
+    response = _definition_response("誤った意味。")
+    response.text = response.text.replace(
+        '<section class="description">', '<h3>べつ【別】</h3><section class="description">'
+    ) + '''<article class="dictype nikkokuseisen">
+        <h3>えら・ぶ【選ぶ・×択ぶ】</h3>
+        <section class="description">正しい意味。</section></article>'''
+    session = MagicMock()
+    session.get.side_effect = [_http_error(404), response]
+
+    result = KotobankClient(session=session).lookup("択ぶ", ["選ぶ"])
+
+    assert result.senses == ["正しい意味。"]
+    assert result.source_name == "精選版 日本国語大辞典"
+
+
+def _fixture_response(expression: str) -> MagicMock:
+    response = MagicMock()
+    response.status_code = 200
+    response.text = (
+        Path(__file__).parent / "fixtures" / "kotobank" / f"{expression}.html"
+    ).read_text(encoding="utf-8")
+    return response
+
+
+def _http_error(status: int) -> requests.Response:
+    response = requests.Response()
+    response.status_code = status
+    response.url = "https://kotobank.jp/word/test"
+    response._content = b""
+    return response
 
 
 def _definition_response(sense: str) -> MagicMock:

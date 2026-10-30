@@ -7,12 +7,11 @@ collapse it to the smallest (most frequent) band per surface form.
 """
 
 import functools
-import os
 import re
 import sqlite3
 from dataclasses import dataclass
 
-import jamdict_data
+from kanji_vocab_miner.jmdict import database_path
 
 _NF_RE = re.compile(r"^nf(\d+)$")
 
@@ -49,10 +48,6 @@ _QUERY = """
 """
 
 
-def _db_path() -> str:
-    return os.path.join(os.path.dirname(jamdict_data.__file__), "jamdict.db")
-
-
 @functools.lru_cache(maxsize=1)
 def get_frequency_index() -> dict[str, int]:
     """Cached frequency index, built once per process (read-only)."""
@@ -61,7 +56,7 @@ def get_frequency_index() -> dict[str, int]:
 
 def build_frequency_index() -> dict[str, int]:
     """Return a mapping of surface form -> smallest nf band (1-48)."""
-    con = sqlite3.connect(_db_path())
+    con = sqlite3.connect(database_path())
     try:
         rows = con.execute(_QUERY).fetchall()
     finally:
@@ -89,7 +84,7 @@ def words_in_band(band: int) -> list[BandWord]:
         return []
 
     code = f"nf{band:02d}"
-    con = sqlite3.connect(_db_path())
+    con = sqlite3.connect(database_path())
     try:
         cur = con.cursor()
         cur.execute(

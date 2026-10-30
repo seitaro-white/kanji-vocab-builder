@@ -23,7 +23,7 @@ from kanji_vocab_miner.kotobank import JapaneseDefinition, KotobankClient
 from kanji_vocab_miner.vocab_models import PendingVocabItem
 
 
-def _definition(expression: str) -> JapaneseDefinition:
+def _definition(expression: str, candidate_spellings=()) -> JapaneseDefinition:
     return JapaneseDefinition(
         expression=expression,
         senses=[f"{expression}の定義。"],
@@ -68,10 +68,17 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
     ]
     lookups = []
     added_notes = []
+    sibling_requests = []
+
+    def find_siblings(expression: str, reading: str) -> list[str]:
+        sibling_requests.append((expression, reading))
+        return [f"{expression}の別表記"]
+
+    monkeypatch.setattr(vocab_commit, "sibling_spellings", find_siblings)
 
     class FakeClient:
-        def lookup(self, expression):
-            lookups.append(expression)
+        def lookup(self, expression, candidate_spellings=()):
+            lookups.append((expression, list(candidate_spellings)))
             return JapaneseDefinition(
                 expression=expression,
                 senses=[f"{expression}の定義"],
@@ -100,7 +107,11 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
         config=_config(),
     )
 
-    assert lookups == ["学校", "覚える"]
+    assert sibling_requests == [("学校", "がっこう"), ("覚える", "おぼえる")]
+    assert lookups == [
+        ("学校", ["学校の別表記"]),
+        ("覚える", ["覚えるの別表記"]),
+    ]
     assert len(result.added) == 2
     assert result.failed == []
     assert added_notes[0]["fields"]["Recall"] == ""
@@ -180,7 +191,9 @@ def test_add_vocab_items_prepares_native_sudachi_cue_with_mocked_io(
     monkeypatch.setattr(connect, "send_request", capture_note)
     result = vocab_commit.add_vocab_items(
         [item],
-        definition_client=SimpleNamespace(lookup=lambda expression: definition),
+        definition_client=SimpleNamespace(
+            lookup=lambda expression, candidate_spellings=(): definition
+        ),
         enrichment_client=FakeEnrichmentClient(),
         config=_config(),
     )
@@ -204,7 +217,7 @@ def test_add_vocab_items_classifies_partial_failures_and_duplicates(monkeypatch)
     lookups = []
 
     class FakeClient:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             lookups.append(expression)
             if expression == "不存在":
                 raise RuntimeError("definition missing")
@@ -254,7 +267,7 @@ def test_add_vocab_items_labels_preparation_and_anki_failures(
     )
 
     class FakeClient:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             return JapaneseDefinition(
                 expression=expression,
                 senses=["教育を行う所。"],
@@ -326,7 +339,7 @@ def test_add_vocab_items_missing_key_short_circuits_after_duplicates(
     )
 
     class ForbiddenKotobank:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             forbidden_calls.append("kotobank")
 
     result = vocab_commit.add_vocab_items(
@@ -362,7 +375,7 @@ def test_add_vocab_items_constructs_enrichment_client_from_config(
             return _enrichment(word.expression)
 
     class DefinitionClient:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             return _definition(expression)
 
     monkeypatch.setattr(connect, "get_vocab_expressions", lambda: set())
@@ -402,7 +415,7 @@ def test_add_vocab_items_writes_v3_successes_in_reviewed_order(
     added_expressions = []
 
     class DefinitionClient:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             return _definition(expression)
 
     def fake_send(action, **params):
@@ -454,7 +467,7 @@ def test_add_vocab_items_returns_mixed_failures_in_reviewed_order(
     ]
 
     class DefinitionClient:
-        def lookup(self, expression):
+        def lookup(self, expression, candidate_spellings=()):
             if expression == "definition":
                 raise RuntimeError("definition failed")
             return _definition(expression)
@@ -532,7 +545,7 @@ def test_add_vocab_items_finishes_preparation_and_enrichment_before_writing(
     monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: set())
     monkeypatch.setattr(vocab_commit, "render_japanese_cue", lambda *args: "cue")
 
-    def lookup(expression: str) -> JapaneseDefinition:
+    def lookup(expression: str, candidate_spellings=()) -> JapaneseDefinition:
         operations.append(f"definition:{expression}")
         return _definition(expression)
 
