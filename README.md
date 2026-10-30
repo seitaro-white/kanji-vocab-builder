@@ -18,6 +18,9 @@ selected spelling too: if Jisho's word page displays a different primary spellin
 the front uses the matching **Other forms** reading (for example, `眼鏡【めがね】`
 rather than replacing it with `メガネ`). Grouped readings stay visible until all
 their kanji are known; kana and other non-kanji text remain plain text.
+If the word page returns 404 (as for `善い` and `善く`), the front instead uses
+an exact **Other forms** spelling from Jisho search results. Unrelated results
+are ignored; conflicting readings across matching entries produce an error.
 
 The workflow is designed to complement kanji study: as you learn new kanji, you naturally build vocabulary that reinforces those characters.
 

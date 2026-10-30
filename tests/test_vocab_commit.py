@@ -109,14 +109,26 @@ def test_add_vocab_items_fetches_definitions_in_order_for_every_item(monkeypatch
     assert all(note["modelName"] == "MyJapaneseVocabularyV3" for note in added_notes)
 
 
+@pytest.mark.parametrize(
+    "expression, kana, fixture, expected_front",
+    [
+        ("眼鏡", "めがね", "jisho_megane.html", "<ruby>眼鏡<rt>めがね</rt></ruby>"),
+        ("善い", "よい", "jisho_yoi_search.html", "<ruby>善<rt>よ</rt></ruby>い"),
+        ("善く", "よく", "jisho_yoku_search.html", "<ruby>善<rt>よ</rt></ruby>く"),
+    ],
+)
 def test_add_vocab_items_preserves_alternate_spelling_through_real_furigana(
     monkeypatch: pytest.MonkeyPatch,
+    expression: str,
+    kana: str,
+    fixture: str,
+    expected_front: str,
 ) -> None:
-    """Commit 眼鏡 without mocking away the Jisho HTML parsing regression."""
+    """Commit alternate spellings without mocking away Jisho HTML parsing."""
     item = PendingVocabItem(
-        JishoWord(expression="眼鏡", kana="めがね", jlpt=5, definitions=["glasses"])
+        JishoWord(expression=expression, kana=kana, jlpt=5, definitions=["definition"])
     )
-    html = (Path(__file__).parent / "fixtures" / "jisho_megane.html").read_text(
+    html = (Path(__file__).parent / "fixtures" / fixture).read_text(
         encoding="utf-8"
     )
     notes: list[dict[str, Any]] = []
@@ -124,8 +136,15 @@ def test_add_vocab_items_preserves_alternate_spelling_through_real_furigana(
     monkeypatch.setattr(connect, "get_reviewed_kanji", lambda: {"眼"})
 
     def fetch_page(url: str) -> SimpleNamespace:
-        assert url == "https://jisho.org/word/眼鏡"
-        return SimpleNamespace(text=html, raise_for_status=lambda: None)
+        if expression != "眼鏡" and url == "https://jisho.org/word/" + expression:
+            return SimpleNamespace(status_code=404, text="Not found")
+        expected_url = (
+            "https://jisho.org/word/眼鏡"
+            if expression == "眼鏡"
+            else "https://jisho.org/search/" + jisho.urllib.parse.quote(expression)
+        )
+        assert url == expected_url
+        return SimpleNamespace(status_code=200, text=html, raise_for_status=lambda: None)
 
     def capture_note(action: str, **params: Any) -> int:
         assert action == "addNote"
@@ -137,7 +156,7 @@ def test_add_vocab_items_preserves_alternate_spelling_through_real_furigana(
     definition_client = create_autospec(KotobankClient, instance=True)
     definition_client.lookup.side_effect = _definition
     enrichment_client = create_autospec(DeepSeekEnrichmentClient, instance=True)
-    enrichment_client.generate.return_value = _enrichment("眼鏡")
+    enrichment_client.generate.return_value = _enrichment(expression)
     result = vocab_commit.add_vocab_items(
         [item],
         definition_client=definition_client,
@@ -149,8 +168,8 @@ def test_add_vocab_items_preserves_alternate_spelling_through_real_furigana(
     assert result.failed == []
     assert result.skipped_duplicates == []
     assert len(notes) == 1
-    assert notes[0]["fields"]["Expression"] == "眼鏡"
-    assert notes[0]["fields"]["Front"] == "<ruby>眼鏡<rt>めがね</rt></ruby>"
+    assert notes[0]["fields"]["Expression"] == expression
+    assert notes[0]["fields"]["Front"] == expected_front
     assert notes[0]["deckName"] == VOCAB_DECK_NAME
 
 

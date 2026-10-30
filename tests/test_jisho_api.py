@@ -1,6 +1,6 @@
 from html import escape
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -208,6 +208,99 @@ def test_furigana_preserves_requested_spelling_from_other_forms(
     assert result == expected
 
 
+@pytest.mark.parametrize(
+    "word, fixture, suffix",
+    [("善い", "jisho_yoi_search.html", "い"), ("善く", "jisho_yoku_search.html", "く")],
+)
+@pytest.mark.parametrize("reviewed", [set(), {"善"}])
+def test_missing_word_page_uses_exact_search_other_form(
+    word: str, fixture: str, suffix: str, reviewed: set[str]
+) -> None:
+    missing = MagicMock(status_code=404, text="<html>Not found</html>")
+    search = MagicMock(
+        status_code=200,
+        text=(Path(__file__).parent / "fixtures" / fixture).read_text(encoding="utf-8"),
+    )
+    with patch("kanji_vocab_miner.jisho.requests.get", side_effect=[missing, search]) as get:
+        front = jisho.fetch_jisho_word_furigana(word, reviewed)
+
+    css = ' class="known"' if reviewed else ""
+    assert front == f"<ruby>善<rt{css}>よ</rt></ruby>{suffix}"
+    assert get.call_args_list == [
+        call("https://jisho.org/word/" + word),
+        call("https://jisho.org/search/" + jisho.urllib.parse.quote(word)),
+    ]
+
+
+def _search_concept(spelling: str, reading: str) -> str:
+    return f'''<div class="concept_light">
+        <div class="concept_light-representation"><span class="text">別</span></div>
+        <span class="meaning-meaning"><span class="break-unit">
+        {spelling} 【{reading}】</span></span></div>'''
+
+
+@pytest.mark.parametrize("second_reading", ["よく", "ぜんく"])
+def test_search_checks_readings_across_all_matching_concepts(second_reading: str) -> None:
+    missing = MagicMock(status_code=404)
+    search = MagicMock(
+        status_code=200,
+        text=_search_concept("善く", "よく") + _search_concept("善く", second_reading),
+    )
+    with patch("kanji_vocab_miner.jisho.requests.get", side_effect=[missing, search]):
+        if second_reading == "よく":
+            assert jisho.fetch_jisho_word_furigana("善く", set()) == (
+                "<ruby>善<rt>よ</rt></ruby>く"
+            )
+        else:
+            with pytest.raises(ValueError, match="conflicting readings for '善く'"):
+                jisho.fetch_jisho_word_furigana("善く", set())
+
+
+def test_search_http_failure_reports_requested_word() -> None:
+    missing = MagicMock(status_code=404)
+    search = MagicMock(status_code=503)
+    search.raise_for_status.side_effect = jisho.requests.HTTPError("503 Unavailable")
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", side_effect=[missing, search]),
+        pytest.raises(jisho.requests.RequestException, match="善く.*503"),
+    ):
+        jisho.fetch_jisho_word_furigana("善く", set())
+
+
+def test_word_page_does_not_borrow_other_forms_from_another_concept() -> None:
+    response = MagicMock(
+        status_code=200,
+        text=_search_concept("別物", "べつもの") + _search_concept("善く", "よく"),
+    )
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", return_value=response),
+        pytest.raises(ValueError, match="lists no reading for the requested spelling"),
+    ):
+        jisho.fetch_jisho_word_furigana("善く", set())
+
+
+def test_search_skips_unrelated_results_and_requires_exact_spelling() -> None:
+    missing = MagicMock(status_code=404)
+    search = MagicMock(status_code=200, text=_search_concept("善くする", "よくする"))
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", side_effect=[missing, search]),
+        pytest.raises(ValueError, match="no reading for the exact spelling '善く'"),
+    ):
+        jisho.fetch_jisho_word_furigana("善く", set())
+
+
+@pytest.mark.parametrize("status", [403, 429, 500])
+def test_furigana_does_not_search_after_other_http_errors(status: int) -> None:
+    response = MagicMock(status_code=status)
+    response.raise_for_status.side_effect = jisho.requests.HTTPError(str(status))
+    with (
+        patch("kanji_vocab_miner.jisho.requests.get", return_value=response) as get,
+        pytest.raises(jisho.requests.RequestException, match="善く"),
+    ):
+        jisho.fetch_jisho_word_furigana("善く", set())
+    get.assert_called_once_with("https://jisho.org/word/善く")
+
+
 def test_furigana_reports_http_failure_with_requested_word() -> None:
     response = _make_furigana_response("メガネ", [])
     response.raise_for_status.side_effect = jisho.requests.HTTPError("404 Not Found")
@@ -299,6 +392,13 @@ def test_furigana_does_not_substitute_an_unrelated_spelling() -> None:
             ["はし"],
             {"走"},
             '<ruby>走<rt class="known">はし</rt></ruby>る',
+        ),
+        # Preserve the existing grouped fallback for mixed kana/kanji spellings.
+        (
+            "お土産",
+            ["みやげ"],
+            set(),
+            "<ruby>お土産<rt>みやげ</rt></ruby>",
         ),
         # Fallback path (one furigana for two kanji) — no kanji reviewed
         (
