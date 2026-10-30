@@ -6,7 +6,7 @@ from html import escape
 from typing import Any, Dict, List, Optional, Set
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 
 from kanji_vocab_miner.furigana import render_token_furigana
@@ -66,6 +66,9 @@ def fetch_jisho_word_search(query: str) -> Dict[str, Any]:
 def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
     """Fetch Jisho ruby while preserving the requested dictionary spelling.
 
+    A missing word page (404 only) uses exact Other forms on Jisho's search page.
+    Conflicting readings across matching search entries are rejected.
+
     Args:
         word: Exact spelling selected by the caller, including alternate forms.
         reviewed_kanji: Kanji whose readings should receive rt.known.
@@ -75,12 +78,17 @@ def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
         from its matching Other forms entry when the primary spelling differs.
 
     Raises:
-        ValueError: The page has no word representation or lists no reading for
-            the requested alternate spelling.
+        ValueError: The page has no matching spelling/reading or search entries
+            have conflicting readings.
         requests.RequestException: The HTTP request fails; includes the word.
     """
     try:
         response = requests.get("https://jisho.org/word/" + word)
+        word_page_missing = response.status_code == 404
+        if word_page_missing:
+            response = requests.get(
+                "https://jisho.org/search/" + urllib.parse.quote(word, safe="")
+            )
         response.raise_for_status()
     except requests.RequestException as error:
         raise requests.RequestException(
@@ -89,6 +97,9 @@ def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
 
     soup = BeautifulSoup(response.text, "html.parser")
 
+    if word_page_missing:
+        return _render_search_furigana(soup, word, reviewed_kanji)
+
     wordhtml = soup.select_one("div.concept_light-representation")
     text_node = wordhtml.select_one("span.text") if wordhtml is not None else None
     if wordhtml is None or text_node is None:
@@ -96,15 +107,54 @@ def fetch_jisho_word_furigana(word: str, reviewed_kanji: Set[str]) -> str:
 
     characters = text_node.get_text().strip(" \n")
     if characters != word:
-        for form in soup.select(".meaning-meaning .break-unit"):
-            match = re.fullmatch(r"(.+?)\s*【([^】]+)】", form.get_text(strip=True))
-            if match and match.group(1).strip() == word:
-                return render_token_furigana(word, match.group(2), reviewed_kanji)
+        concept = wordhtml.find_parent(class_="concept_light")
+        readings = _other_form_readings(
+            concept if isinstance(concept, Tag) else soup, word
+        )
+        if readings:
+            return render_token_furigana(word, readings[0], reviewed_kanji)
         raise ValueError(
             f"Jisho displays '{characters}' instead of '{word}' and lists no "
             "reading for the requested spelling."
         )
 
+    return _render_jisho_representation(wordhtml, characters, reviewed_kanji)
+
+
+def _other_form_readings(concept: Tag, word: str) -> List[str]:
+    readings: List[str] = []
+    for form in concept.select(".meaning-meaning .break-unit"):
+        match = re.fullmatch(r"(.+?)\s*【([^】]+)】", form.get_text(strip=True))
+        if match and match.group(1).strip() == word:
+            readings.append(match.group(2).strip())
+    return readings
+
+
+def _render_search_furigana(
+    soup: BeautifulSoup, word: str, reviewed_kanji: Set[str]
+) -> str:
+    matches: List[List[str]] = []
+    for concept in soup.select(".concept_light"):
+        readings = _other_form_readings(concept, word)
+        if readings:
+            matches.append(readings)
+
+    if not matches:
+        raise ValueError(f"Jisho search lists no reading for the exact spelling '{word}'.")
+    readings = {reading for match in matches for reading in match}
+    if len(matches) > 1 and len(readings) > 1:
+        raise ValueError(
+            f"Jisho search has conflicting readings for '{word}': "
+            + ", ".join(sorted(readings))
+        )
+    # A single entry may list pronunciation variants (よい/えい). As on a word
+    # page, preserve its first-listed reading rather than guessing another one.
+    return render_token_furigana(word, matches[0][0], reviewed_kanji)
+
+
+def _render_jisho_representation(
+    wordhtml: Tag, characters: str, reviewed_kanji: Set[str]
+) -> str:
     furigana = [escape(i.text) for i in wordhtml.select("span.kanji")]
 
     kanji_chars = [c for c in characters if is_kanji(c)]
@@ -178,7 +228,7 @@ def _parse_kanji_summary_from_html(kanji: str, html: str) -> Optional[KanjiSumma
     )
 
 
-def _extract_readings(details_node: BeautifulSoup, class_name: str) -> List[str]:
+def _extract_readings(details_node: Tag, class_name: str) -> List[str]:
     selector = f"dl.dictionary_entry.{class_name} dd"
     node = details_node.select_one(selector)
     if not node:
