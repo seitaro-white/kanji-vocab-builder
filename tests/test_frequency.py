@@ -32,7 +32,7 @@ def dictionary_db(tmp_path, monkeypatch) -> None:
                 (100, 'country', 'eng'), (200, 'school', 'eng'),
                 (300, 'amazing', 'eng');
         """)
-    monkeypatch.setattr(frequency, "_db_path", lambda: str(path))
+    monkeypatch.setattr(frequency, "database_path", lambda: path)
 
 
 def test_bundled_dictionary_contains_ranked_forms():

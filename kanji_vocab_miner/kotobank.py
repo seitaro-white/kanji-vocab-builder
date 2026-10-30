@@ -1,5 +1,6 @@
 import re
 import time
+from collections.abc import Iterable, Sequence
 from typing import Callable, List, Optional
 from urllib.parse import quote
 
@@ -26,6 +27,14 @@ class KotobankDefinitionNotFound(Exception):
         )
 
 
+class KotobankAmbiguousDefinitionError(Exception):
+    def __init__(self, expression: str, urls: Iterable[str]) -> None:
+        """Reject multiple distinct pages verifying the requested spelling."""
+        super().__init__(
+            f"Ambiguous Kotobank definition for '{expression}': {', '.join(urls)}"
+        )
+
+
 class KotobankParseError(Exception):
     def __init__(self, expression: str, url: str) -> None:
         """Create an error for an unusable supported dictionary article."""
@@ -46,6 +55,10 @@ class KotobankRequestError(Exception):
         )
 
 
+class KotobankPageNotFound(KotobankRequestError):
+    """A Kotobank request failed specifically because the page returned HTTP 404."""
+
+
 class KotobankClient:
     def __init__(
         self,
@@ -61,11 +74,22 @@ class KotobankClient:
             {"User-Agent": "kanji-vocab-miner/0.1 Kotobank personal-use lookup"}
         )
 
-    def lookup(self, expression: str) -> JapaneseDefinition:
-        """Fetch and parse a Japanese definition for an expression."""
+    def lookup(
+        self, expression: str, candidate_spellings: Sequence[str] = ()
+    ) -> JapaneseDefinition:
+        """Try supplied siblings only after a 404 or unsupported direct page.
 
+        A sibling must list the exact requested spelling in a supported article's
+        headword. Missing or ambiguous verified pages remain failures.
+        """
         url = f"https://kotobank.jp/word/{quote(expression, safe='')}"
+        try:
+            response = self._get(expression, url)
+            return parse_kotobank_html(expression, url, response.text)
+        except (KotobankPageNotFound, KotobankDefinitionNotFound) as error:
+            return self._lookup_siblings(expression, candidate_spellings, error)
 
+    def _get(self, expression: str, url: str) -> requests.Response:
         # Retry twice before giving up
         for attempt in range(2):
             try:
@@ -80,15 +104,55 @@ class KotobankClient:
                     continue
                 response.raise_for_status()
 
-                # Return
-                return parse_kotobank_html(expression, url, response.text)
+                return response
 
             except (requests.Timeout, requests.ConnectionError) as error:
                 if attempt == 1:
                     raise KotobankRequestError(expression, url, str(error)) from error
+            except requests.HTTPError as error:
+                if error.response is not None and error.response.status_code == 404:
+                    raise KotobankPageNotFound(expression, url, str(error)) from error
+                raise KotobankRequestError(expression, url, str(error)) from error
             except requests.RequestException as error:
                 raise KotobankRequestError(expression, url, str(error)) from error
         raise KotobankRequestError(expression, url, "retry exhausted")
+
+    def _lookup_siblings(
+        self,
+        expression: str,
+        candidate_spellings: Sequence[str],
+        original_error: Exception,
+    ) -> JapaneseDefinition:
+        verified: dict[str, JapaneseDefinition] = {}
+        for spelling in candidate_spellings:
+            url = f"https://kotobank.jp/word/{quote(spelling, safe='')}"
+            try:
+                response = self._get(expression, url)
+            except KotobankPageNotFound:
+                continue
+            try:
+                definition = parse_kotobank_html(
+                    expression, url, response.text, listed_spelling=expression
+                )
+            except KotobankDefinitionNotFound:
+                continue
+            verified[definition.source_url] = definition
+        if len(verified) > 1:
+            raise KotobankAmbiguousDefinitionError(expression, verified)
+        if not verified:
+            raise original_error
+        return next(iter(verified.values()))
+
+
+def _headword_matches(headword: str, expression: str) -> bool:
+    notation = re.search(r"【([^】]+)】", headword)
+    if not notation:
+        return False
+    variants = re.split(r"[／・]", notation.group(1))
+    return any(
+        expression == variant.replace("▽", "").replace("×", "")
+        for variant in variants
+    )
 
 
 def _normalized_text(node: Tag) -> str:
@@ -113,8 +177,9 @@ def parse_kotobank_html(
     expression: str,
     requested_url: str,
     html: str,
+    listed_spelling: str | None = None,
 ) -> JapaneseDefinition:
-    """Extract a Japanese definition from a Kotobank word page."""
+    """Extract a definition, optionally requiring a spelling in its headword."""
 
     soup = BeautifulSoup(html, "html.parser")
 
@@ -130,6 +195,13 @@ def parse_kotobank_html(
         article = soup.select_one(selector)
         if not article:
             continue
+
+        if listed_spelling is not None:
+            heading = article.select_one("h3")
+            if not heading or not _headword_matches(
+                heading.get_text("", strip=True), listed_spelling
+            ):
+                continue
 
         supported_article_found = True
         description = article.select_one("section.description")
